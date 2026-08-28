@@ -1,4 +1,5 @@
 const pool = require('../../config/db');
+const { assertActivityAllowed } = require('../team/lifecycle');
 
 /**
  * Insert a single proof submission row.
@@ -101,6 +102,11 @@ async function verifyProof(proofId, verifierId, verifierRole) {
  * Check whether a task is assigned to the given user (or unassigned).
  */
 async function isTaskAssignedToUser(taskId, userId) {
+  await assertActivityAllowed(
+    pool,
+    userId,
+    new Date().toISOString().slice(0, 10)
+  );
   const res = await pool.query(
     `SELECT 1 FROM social_tasks st
      WHERE st.id = $1 AND st.deleted_at IS NULL

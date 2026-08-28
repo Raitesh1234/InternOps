@@ -1,9 +1,17 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Users, UserRound, X, Building2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Users,
+  UserRound,
+  X,
+  Building2,
+  UserCog,
+} from 'lucide-react';
 import api from '../../lib/axios';
+import ManageTlModal from '../../components/admin/ManageTlModal';
 import {
   PageHeader,
   Card,
@@ -20,6 +28,7 @@ export default function ProjectsPage() {
   const queryClient = useQueryClient();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isManageTlOpen, setIsManageTlOpen] = useState(false);
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -49,7 +58,7 @@ export default function ProjectsPage() {
     mutationFn: (data) => api.post('/team/members', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['departmentTeams', deptId] });
-      setSuccess('✓ Project added successfully!');
+      setSuccess('Project added successfully!');
       setForm({
         fullName: '',
         email: '',
@@ -104,16 +113,28 @@ export default function ProjectsPage() {
           subtitle="Pick a project lead to inspect the roster, attendance, and ratings."
           icon={<Building2 className="w-6 h-6" />}
           actions={
-            <Btn
-              onClick={() => {
-                setError('');
-                setSuccess('');
-                setIsModalOpen(true);
-              }}
-              className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-extrabold rounded-2xl"
-            >
-              Add Project
-            </Btn>
+            <div className="flex items-center gap-3">
+              <Btn
+                variant="outline"
+                onClick={() => setIsManageTlOpen(true)}
+                className="rounded-2xl font-extrabold whitespace-nowrap"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <UserCog className="w-4 h-4 shrink-0" />
+                  <span>Replace Senior TL</span>
+                </span>
+              </Btn>
+              <Btn
+                onClick={() => {
+                  setError('');
+                  setSuccess('');
+                  setIsModalOpen(true);
+                }}
+                className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-extrabold rounded-2xl"
+              >
+                Add Project
+              </Btn>
+            </div>
           }
         />
       </div>
@@ -145,7 +166,7 @@ export default function ProjectsPage() {
               onClick={() =>
                 navigate(`/departments/${deptId}/projects/${team.lead_id}`)
               }
-              className="p-5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none group"
+              className="group border border-slate-200 bg-white p-5 shadow-[0_14px_35px_rgba(15,23,42,0.06)] transition-colors duration-200 hover:border-indigo-300 dark:border-slate-700/80 dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-900 dark:shadow-[0_12px_28px_rgba(0,0,0,0.20)] dark:hover:border-indigo-500/50"
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
@@ -167,15 +188,60 @@ export default function ProjectsPage() {
                         }
                         className="mt-1"
                       >
-                        {team.role}
+                        {team.role.replaceAll('_', ' ')}
                       </Badge>
                     </div>
                   </div>
 
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {team.member_count} direct report
-                    {team.member_count === 1 ? '' : 's'}
-                  </p>
+                  <div className="mt-5 flex min-h-[82px] flex-col justify-start gap-3 border-t border-slate-200 pt-4 dark:border-slate-700/70">
+                    <p className="text-sm font-extrabold leading-none text-slate-700 dark:text-slate-100">
+                      {team.member_count}{' '}
+                      {team.role === 'SENIOR_TL'
+                        ? 'visible members'
+                        : 'assigned members'}
+                    </p>
+
+                    <div className="flex min-h-7 flex-wrap items-start gap-2">
+                      {team.role === 'SENIOR_TL' && (
+                        <>
+                          <span className="rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-extrabold text-violet-700 shadow-sm dark:border-violet-500/40 dark:bg-violet-500/20 dark:text-violet-100">
+                            {team.tl_count || 0} TL
+                          </span>
+
+                          <span className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-extrabold text-teal-700 shadow-sm dark:border-teal-500/40 dark:bg-teal-500/20 dark:text-teal-100">
+                            {team.captain_count || 0}{' '}
+                            {team.captain_count === 1 ? 'Captain' : 'Captains'}
+                          </span>
+
+                          <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-extrabold text-blue-700 shadow-sm dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-100">
+                            {team.intern_count || 0}{' '}
+                            {team.intern_count === 1 ? 'Intern' : 'Interns'}
+                          </span>
+                        </>
+                      )}
+
+                      {team.role === 'TL' && (
+                        <>
+                          <span className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-extrabold text-teal-700 shadow-sm dark:border-teal-500/40 dark:bg-teal-500/20 dark:text-teal-100">
+                            {team.captain_count || 0}{' '}
+                            {team.captain_count === 1 ? 'Captain' : 'Captains'}
+                          </span>
+
+                          <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-extrabold text-blue-700 shadow-sm dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-100">
+                            {team.intern_count || 0}{' '}
+                            {team.intern_count === 1 ? 'Intern' : 'Interns'}
+                          </span>
+                        </>
+                      )}
+
+                      {team.role === 'CAPTAIN' && (
+                        <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-extrabold text-blue-700 shadow-sm dark:border-blue-500/40 dark:bg-blue-500/20 dark:text-blue-100">
+                          {team.intern_count || 0}{' '}
+                          {team.intern_count === 1 ? 'Intern' : 'Interns'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <Users className="w-5 h-5 text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 transition-colors" />
@@ -185,11 +251,30 @@ export default function ProjectsPage() {
         </div>
       )}
 
+      {isManageTlOpen && department && (
+        <ManageTlModal
+          department={department}
+          onClose={() => setIsManageTlOpen(false)}
+          onCompleted={async () => {
+            setIsManageTlOpen(false);
+            await Promise.all([
+              queryClient.invalidateQueries({
+                queryKey: ['departmentTeams', deptId],
+              }),
+              queryClient.invalidateQueries({
+                queryKey: ['departmentSeniorTlCandidates', deptId],
+              }),
+              queryClient.invalidateQueries({ queryKey: ['teamMembers'] }),
+            ]);
+          }}
+        />
+      )}
+
       {/* Add Project Modal */}
       {isModalOpen &&
         createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-6 relative animate-in fade-in zoom-in duration-200">
+          <div className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+            <div className="internops-modal-panel w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-6 relative animate-in fade-in zoom-in duration-200">
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"

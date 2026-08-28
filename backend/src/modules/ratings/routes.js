@@ -28,7 +28,7 @@ module.exports = async function ratingsRoutes(fastify) {
       const { rated_user_id, score, remarks } = z
         .object({
           rated_user_id: z.string().uuid(),
-          score: z.coerce.number().int().min(1).max(10),
+          score: z.coerce.number().multipleOf(0.1).min(1).max(10),
           remarks: z.string().max(2000).optional(),
         })
         .parse(req.body);
@@ -86,7 +86,7 @@ module.exports = async function ratingsRoutes(fastify) {
       preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN')],
     },
     async (req, reply) => {
-      const paramsSchema = z.object({ deptId: z.string().min(1) });
+      const paramsSchema = z.object({ deptId: z.string().uuid() });
       const querySchema = z
         .object({
           from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -120,6 +120,7 @@ module.exports = async function ratingsRoutes(fastify) {
         departmentId: parsedParams.data.deptId,
         requesterId: req.user.id,
         isAdmin: req.user.role === 'ADMIN',
+        requesterRole: req.user.role,
         from: parsedQuery.data.from,
         to: parsedQuery.data.to,
       });

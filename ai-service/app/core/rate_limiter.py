@@ -14,6 +14,11 @@ class RateLimiter:
         self.requests_per_minute = requests_per_minute
         self._hits: dict[str, list[float]] = {}
 
+    @property
+    def history(self) -> dict[str, list[float]]:
+        """Backward-compatible alias for the internal per-client hit log."""
+        return self._hits
+
     async def check_rate_limit(
         self,
         request: Request,

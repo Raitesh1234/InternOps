@@ -27,7 +27,8 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
       JWT_SECRET: ci-test-secret-do-not-use-in-prod
       JWT_REFRESH_SECRET: ci-test-refresh-secret
       JWT_REFRESH_EXPIRES_IN: 7d
@@ -71,7 +72,8 @@ jobs:
 
       - name: Run migrations
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/internops_test
         run: |
           cd backend
           echo "Running database migrations..."
@@ -93,7 +95,11 @@ jobs:
         run: npm run lint
 
       - name: Run Frontend Tests
-        run: cd frontend && npm run test
+        run: |
+          cd frontend
+          npm cache clean --force
+          npm ci --workspaces=false --include=optional --no-audit --no-fund
+          npm run test
 
       - name: Build frontend
         run: cd frontend && npm run build

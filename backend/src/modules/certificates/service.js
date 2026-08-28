@@ -518,7 +518,7 @@ async function quickGenerate(data, userId) {
 
   // 3b. Split text pieces for the branded PDF layout
   const roleLine = data.role
-    ? `has successfully completed their internship as ${data.role} of domain`
+    ? `has successfully completed their internship as ${data.role} in the domain of`
     : 'has successfully completed their internship in the domain of';
   const dateRangeText = `from ${startFormatted} to ${endFormatted}`;
   const pdfBody =

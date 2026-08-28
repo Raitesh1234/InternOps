@@ -151,6 +151,9 @@ export default function ProjectDetailPage() {
                 isProjectView={true}
                 deptId={deptId}
                 roster={roster}
+                onViewAllAttendance={() =>
+                  navigate(`/admin/departments/${deptId}/attendance`)
+                }
               />
             )}
             {tab === 'ratings' && (

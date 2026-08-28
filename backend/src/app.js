@@ -1,6 +1,12 @@
 require('dotenv').config();
 const validateEnv = require('./config/validateEnv');
 validateEnv();
+const {
+  initSentry,
+  captureException: sentryCaptureException,
+  flushSentry,
+} = require('./config/sentry');
+initSentry();
 const auth = require('./middleware/auth');
 const rbac = require('./middleware/rbac');
 const path = require('path');
@@ -404,6 +410,15 @@ app.setErrorHandler((error, request, reply) => {
 
   if (statusCode >= 500) {
     request.log.error(logPayload, 'Unhandled server error');
+    sentryCaptureException(error, {
+      userId: request.user?.id || null,
+      tags: {
+        requestId: request.id,
+        route: request.url,
+        method: request.method,
+        statusCode: String(statusCode),
+      },
+    });
   } else {
     request.log.warn(logPayload, 'Request error');
   }
@@ -419,9 +434,15 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const bulkJobQueue = require('./services/bulkJobQueue');
+const {
+  checkDatabase,
+  integrationStatus,
+  writeStartupSummary,
+} = require('./utils/startupDiagnostics');
 
 const start = async () => {
   try {
+    const database = await checkDatabase(pool, config.databaseUrl);
     await app.listen({
       port: config.port,
       host: config.host,
@@ -429,10 +450,14 @@ const start = async () => {
     initializeWebSocket(app.server, app.log);
     await bulkJobQueue.init();
     await getRedisClient();
-    app.log.info(
-      { port: config.port },
-      `Server listening on port ${config.port}`
-    );
+    writeStartupSummary({
+      logger: app.log,
+      database,
+      redis: getRedisStatus(),
+      queue: bulkJobQueue.getStatus(),
+      integrations: integrationStatus(config),
+      port: config.port,
+    });
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -464,6 +489,7 @@ const gracefulShutdown = async (signal) => {
     }
 
     await pool.end();
+    await flushSentry(2000);
 
     try {
       githubSyncOrchestrator.shutdown();
@@ -487,6 +513,22 @@ const gracefulShutdown = async (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ err: reason }, 'Unhandled promise rejection');
+  sentryCaptureException(
+    reason instanceof Error ? reason : new Error(String(reason)),
+    { extra: { type: 'unhandledRejection' } }
+  );
+});
+process.on('uncaughtException', (error) => {
+  app.log.error({ err: error }, 'Uncaught exception - process will exit');
+  sentryCaptureException(error, { extra: { type: 'uncaughtException' } });
+  const forceExit = setTimeout(() => process.exit(1), 3000);
+  flushSentry(2000).finally(() => {
+    clearTimeout(forceExit);
+    process.exit(1);
+  });
+});
 
 if (require.main === module) {
   start();

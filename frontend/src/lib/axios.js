@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { toast } from 'sonner';
+import { captureException } from './sentry';
 
 export function getBaseUrl() {
   const raw = import.meta.env.VITE_API_URL;
@@ -303,6 +304,18 @@ api.interceptors.response.use(
       err.response?.data || err.message,
       err.config?.url
     );
+
+    const errorStatus = err.response?.status;
+    if (errorStatus >= 500) {
+      captureException(err, {
+        tags: {
+          source: 'api',
+          statusCode: String(errorStatus),
+          route: err.config?.url,
+        },
+        extra: { responseData: err.response?.data },
+      });
+    }
 
     const original = err.config || {};
     const status = err.response?.status;

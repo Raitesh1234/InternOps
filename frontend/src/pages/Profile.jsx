@@ -117,6 +117,9 @@ export default function Profile() {
     mutationFn: (data) => api.patch('/users/me/password', data),
     onSuccess: () => {
       flash('Password changed successfully');
+      if (user?.mustChangePassword) {
+        setAuth({ user: { ...user, mustChangePassword: false } });
+      }
       setOldPassword('');
       setNewPassword('');
     },
@@ -199,6 +202,21 @@ export default function Profile() {
       </div>
 
       {/* Alert Messages */}
+      {user?.mustChangePassword && (
+        <div
+          role="alert"
+          className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900 shadow-sm dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <Lock className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <div className="font-extrabold">Password change required</div>
+            <div className="text-sm">
+              Your current password is the temporary Intern Code. Change it
+              below before using InternOps.
+            </div>
+          </div>
+        </div>
+      )}
       {message && (
         <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-200 px-4 py-3 rounded-2xl mb-5 animate-fade-in shadow-sm">
           <CheckCircle2 className="w-5 h-5" />

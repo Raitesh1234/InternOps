@@ -12,9 +12,14 @@ async function send(userId, message, client = pool, options = {}) {
 
   if (emit) {
     try {
-      const { notifyUser } = require('../../websocket');
-      const unread = await getUnreadCount(userId);
+      const websocket = require('../../websocket') || {};
+      const notifyUser = websocket.notifyUser;
 
+      if (typeof notifyUser !== 'function') {
+        return notification;
+      }
+
+      const unread = await getUnreadCount(userId);
       await notifyUser(userId, 'notification-received', {
         notification,
         unreadCount: unread,

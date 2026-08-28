@@ -6,6 +6,7 @@ import useFeatureFlagsStore from './store/featureFlags';
 import api from './lib/axios';
 import RoleGuard from './components/RoleGuard';
 import ErrorBoundary from './components/ErrorBoundary';
+import HR from './pages/HR';
 
 // Lazy load page components
 const Login = lazy(() => import('./pages/Login'));
@@ -41,6 +42,7 @@ const FeatureFlags = lazy(() => import('./pages/admin/FeatureFlags'));
 const GithubSync = lazy(() => import('./pages/admin/GithubSync'));
 const ProjectsPage = lazy(() => import('./pages/admin/ProjectsPage'));
 const ProjectDetailPage = lazy(() => import('./pages/admin/ProjectDetailPage'));
+const TaskDetails = lazy(() => import('./pages/admin/TaskDetails'));
 
 function PageLoader() {
   return (
@@ -57,10 +59,15 @@ let bootRefreshPromise = null;
 
 function Private({ children }) {
   const token = useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
   const hydrated = useAuthStore((s) => s.hydrated);
 
   if (!hydrated) return null;
   if (!token) return <Navigate to="/login" replace />;
+  if (user?.mustChangePassword && window.location.pathname !== '/profile') {
+    return <Navigate to="/profile" replace />;
+  }
+
   return children;
 }
 
@@ -232,10 +239,37 @@ export default function App() {
 
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="tasks" element={<Tasks />} />
+            <Route
+              path="tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
+            <Route
+              path="admin/tasks/:taskId"
+              element={
+                <RoleGuard allowedRoles={['ADMIN', 'SENIOR_TL']}>
+                  <TaskDetails />
+                </RoleGuard>
+              }
+            />
             <Route path="attendance" element={<Attendance />} />
             <Route path="ratings" element={<Ratings />} />
             <Route path="meetings" element={<Meetings />} />
             <Route path="team" element={<Team />} />
+
+            <Route
+              path="hr"
+              element={
+                <RoleGuard allowedRoles={['ADMIN']}>
+                  <HR />
+                </RoleGuard>
+              }
+            />
+
+            <Route path="profile" element={<Profile />} />
             <Route path="profile" element={<Profile />} />
             <Route path="sessions" element={<Sessions />} />
             <Route path="notifications" element={<Notifications />} />

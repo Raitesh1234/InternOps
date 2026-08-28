@@ -20,6 +20,7 @@ const mockTeamMembers = [
     id: 'user-1',
     full_name: 'Alice Cooper',
     email: 'alice@example.com',
+    intern_code: 'INT-001',
     role: 'INTERN',
     department_id: 'dept-1',
     department_name: 'Engineering',
@@ -28,6 +29,7 @@ const mockTeamMembers = [
     id: 'user-2',
     full_name: 'Bob Marley',
     email: 'bob@example.com',
+    intern_code: 'INT-002',
     role: 'INTERN',
     department_id: 'dept-2',
     department_name: 'Marketing',
@@ -35,57 +37,88 @@ const mockTeamMembers = [
 ];
 
 const mockSheetData = {
+  available_months: ['2026-08'],
   members: [
     {
       id: 'user-1',
       full_name: 'Alice Cooper',
       email: 'alice@example.com',
+      intern_code: 'INT-001',
       role: 'INTERN',
-      department_name: 'Engineering',
       internship_status: 'ACTIVE',
-      average_score: 8.4,
-      latest_score: 9,
-      rating_count: 5,
-      latest_created_at: '2026-08-20',
-      latest_remarks: 'Great work',
+      suspended: false,
+      weekly_ratings: [
+        {
+          score: 8.4,
+          remarks: 'Great work',
+          period_start: '2026-08-03',
+          period_end: '2026-08-08',
+        },
+        {
+          score: 9,
+          remarks: 'Excellent follow-through',
+          period_start: '2026-08-10',
+          period_end: '2026-08-15',
+        },
+      ],
     },
     {
       id: 'user-2',
       full_name: 'Bob Marley',
       email: 'bob@example.com',
+      intern_code: 'INT-002',
       role: 'INTERN',
-      department_name: 'Marketing',
       internship_status: 'ACTIVE',
-      average_score: 3.2,
-      latest_score: 3,
-      rating_count: 2,
-      latest_created_at: '2026-08-19',
-      latest_remarks: 'Needs improvement',
+      suspended: false,
+      weekly_ratings: [
+        {
+          score: 3.2,
+          remarks: 'Needs improvement',
+          period_start: '2026-08-03',
+          period_end: '2026-08-08',
+        },
+      ],
     },
     {
       id: 'user-3',
       full_name: 'Charlie Chaplin',
       email: 'charlie@example.com',
+      intern_code: 'INT-003',
       role: 'INTERN',
-      department_name: 'Engineering',
       internship_status: 'COMPLETED',
-      average_score: 5.0,
-      latest_score: 5,
-      rating_count: 4,
-      latest_created_at: '2026-08-18',
-      latest_remarks: 'Good progress',
+      suspended: false,
+      weekly_ratings: [
+        {
+          score: 5,
+          remarks: 'Good progress',
+          period_start: '2026-08-10',
+          period_end: '2026-08-15',
+        },
+      ],
     },
   ],
 };
+
+const renderSheet = (overrides = {}) =>
+  render(
+    <DepartmentRatingsSheet
+      departmentName="Engineering"
+      data={mockSheetData}
+      selectedMonth="2026-08"
+      onMonthChange={vi.fn()}
+      isLoading={false}
+      error={null}
+      onRetry={vi.fn()}
+      {...overrides}
+    />
+  );
 
 describe('Department Ratings Sheet & Filtering', () => {
   let queryClient;
 
   beforeEach(() => {
     queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
+      defaultOptions: { queries: { retry: false } },
     });
 
     useAuthStore.mockReturnValue({
@@ -107,109 +140,57 @@ describe('Department Ratings Sheet & Filtering', () => {
       if (url.startsWith('/ratings/')) {
         return Promise.resolve({ data: [] });
       }
-      return Promise.reject(new Error('Not found'));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
   });
 
-  it('renders DepartmentRatingsSheet with eligibility badges correctly', () => {
-    render(
-      <DepartmentRatingsSheet
-        departmentName="All Departments"
-        data={mockSheetData}
-        from="2026-01-01"
-        to="2026-08-23"
-        onFromChange={() => {}}
-        onToChange={() => {}}
-        isLoading={false}
-        error={null}
-        onRetry={() => {}}
-      />
-    );
-
-    // Alice (8.4 => round 8 => Eligible), Charlie (5.0 => Eligible)
-    expect(screen.getAllByText('🟢 Eligible')).toHaveLength(2);
-    // Bob (3.2 => round 3 => Not Eligible)
-    expect(screen.getAllByText('🔴 Not Eligible')).toHaveLength(1);
+  it('renders the current weekly ratings grid', () => {
+    renderSheet();
 
     expect(screen.getByText('Alice Cooper')).toBeInTheDocument();
     expect(screen.getByText('Bob Marley')).toBeInTheDocument();
     expect(screen.getByText('Charlie Chaplin')).toBeInTheDocument();
+    expect(screen.getByText('8.4/10')).toBeInTheDocument();
+    expect(screen.getByText('3.2/10')).toBeInTheDocument();
+    expect(screen.getByText('5/10')).toBeInTheDocument();
   });
 
-  it('filters by rating value (e.g. 5) in DepartmentRatingsSheet', () => {
-    render(
-      <DepartmentRatingsSheet
-        departmentName="All Departments"
-        data={mockSheetData}
-        from="2026-01-01"
-        to="2026-08-23"
-        onFromChange={() => {}}
-        onToChange={() => {}}
-        isLoading={false}
-        error={null}
-        onRetry={() => {}}
-      />
-    );
+  it('renders weekly periods and their reasons', () => {
+    renderSheet();
 
-    // Select Rating filter = 5
-    const ratingSelect = screen.getByLabelText(/Rating/i);
-    fireEvent.change(ratingSelect, { target: { value: '5' } });
-
-    // Only Charlie Chaplin has average_score 5.0 (rounded 5)
-    expect(screen.getByText('Charlie Chaplin')).toBeInTheDocument();
-    expect(screen.queryByText('Alice Cooper')).not.toBeInTheDocument();
-    expect(screen.queryByText('Bob Marley')).not.toBeInTheDocument();
+    expect(screen.getByText('Week 1')).toBeInTheDocument();
+    expect(screen.getByText('Week 2')).toBeInTheDocument();
+    expect(screen.getByText('Great work')).toBeInTheDocument();
+    expect(screen.getByText('Excellent follow-through')).toBeInTheDocument();
+    expect(screen.getByText('Needs improvement')).toBeInTheDocument();
+    expect(screen.getByText('Good progress')).toBeInTheDocument();
   });
 
-  it('filters by eligibility status in DepartmentRatingsSheet', () => {
-    render(
-      <DepartmentRatingsSheet
-        departmentName="All Departments"
-        data={mockSheetData}
-        from="2026-01-01"
-        to="2026-08-23"
-        onFromChange={() => {}}
-        onToChange={() => {}}
-        isLoading={false}
-        error={null}
-        onRetry={() => {}}
-      />
-    );
+  it('uses the current month-selection contract', () => {
+    const onMonthChange = vi.fn();
 
-    // Select Eligibility = NOT_ELIGIBLE
-    const eligibilitySelect = screen.getByLabelText(/Eligibility/i);
-    fireEvent.change(eligibilitySelect, { target: { value: 'NOT_ELIGIBLE' } });
+    renderSheet({
+      selectedMonth: '2026-07',
+      onMonthChange,
+    });
 
-    // Only Bob Marley (score 3.2 => Not Eligible) should remain
-    expect(screen.getByText('Bob Marley')).toBeInTheDocument();
-    expect(screen.queryByText('Alice Cooper')).not.toBeInTheDocument();
-    expect(screen.queryByText('Charlie Chaplin')).not.toBeInTheDocument();
+    expect(onMonthChange).toHaveBeenCalledWith('2026-08');
   });
 
-  it('filters by search query in DepartmentRatingsSheet', () => {
-    render(
-      <DepartmentRatingsSheet
-        departmentName="All Departments"
-        data={mockSheetData}
-        from="2026-01-01"
-        to="2026-08-23"
-        onFromChange={() => {}}
-        onToChange={() => {}}
-        isLoading={false}
-        error={null}
-        onRetry={() => {}}
-      />
-    );
+  it('filters members by search query', () => {
+    renderSheet();
 
-    const searchInput = screen.getByPlaceholderText(/Search members/i);
-    fireEvent.change(searchInput, { target: { value: 'Alice' } });
+    fireEvent.change(screen.getByPlaceholderText(/Search members/i), {
+      target: { value: 'Alice' },
+    });
 
     expect(screen.getByText('Alice Cooper')).toBeInTheDocument();
     expect(screen.queryByText('Bob Marley')).not.toBeInTheDocument();
     expect(screen.queryByText('Charlie Chaplin')).not.toBeInTheDocument();
+    expect(screen.getByText('Total Interns: 1')).toBeInTheDocument();
   });
 
-  it('renders Ratings page with View All toggle for Admin when All Departments is selected', async () => {
+  it('shows View All after an Admin selects a department', async () => {
     render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={['/ratings']}>
@@ -222,16 +203,30 @@ describe('Department Ratings Sheet & Filtering', () => {
 
     await waitFor(() => {
       expect(screen.getByText('View Ratings History')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /All departments/i })
+      ).toBeInTheDocument();
     });
 
-    // "View All" button should be visible even when All departments is selected
-    const viewAllButton = screen.getByRole('button', { name: /View All/i });
-    expect(viewAllButton).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /All departments/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Engineering' }));
 
+    const viewAllButton = await screen.findByRole('button', {
+      name: /View All/i,
+    });
     fireEvent.click(viewAllButton);
 
-    await waitFor(() => {
-      expect(screen.getByText('Department ratings sheet')).toBeInTheDocument();
-    });
+    expect(
+      await screen.findByText('Department ratings sheet')
+    ).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledWith(
+      '/ratings/department/dept-1/sheet',
+      expect.objectContaining({
+        params: expect.objectContaining({
+          from: expect.stringMatching(/^\d{4}-\d{2}-01$/),
+          to: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      })
+    );
   });
 });

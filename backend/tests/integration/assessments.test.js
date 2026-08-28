@@ -2,7 +2,10 @@ const app = require('../../src/app');
 const { generateAccessToken } = require('../../src/utils/tokens');
 const pool = require('../../src/config/db');
 
-const TEST_EMAIL = 'otherintern@internops.com';
+const INTERN_EMAIL = 'assessment-intern@test.internops.local';
+const CAPTAIN_EMAIL = 'assessment-captain@test.internops.local';
+const OTHER_INTERN_EMAIL = 'assessment-other-intern@test.internops.local';
+const TEST_EMAILS = [INTERN_EMAIL, CAPTAIN_EMAIL, OTHER_INTERN_EMAIL];
 
 describe('Assessments Integration Tests', () => {
   let internId;
@@ -15,36 +18,56 @@ describe('Assessments Integration Tests', () => {
   beforeAll(async () => {
     await app.ready();
 
-    const internRes = await pool.query(
-      "SELECT id FROM users WHERE email = 'intern@internops.com' AND deleted_at IS NULL"
+    await pool.query(
+      `DELETE FROM users
+       WHERE email = ANY($1::text[])`,
+      [TEST_EMAILS]
     );
+
     const captainRes = await pool.query(
-      "SELECT id FROM users WHERE email = 'captain@internops.com' AND deleted_at IS NULL"
+      `INSERT INTO users (email, password_hash, role, full_name)
+       VALUES ($1, $2, 'CAPTAIN', 'Assessment Test Captain')
+       RETURNING id`,
+      [CAPTAIN_EMAIL, 'test-password-hash']
     );
-
-    if (internRes.rowCount === 0 || captainRes.rowCount === 0) {
-      throw new Error(
-        'Assessment test users are missing. Run the assessment seed before tests.'
-      );
-    }
-
-    internId = internRes.rows[0].id;
     captainId = captainRes.rows[0].id;
 
-    const existingOther = await pool.query(
-      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
-      [TEST_EMAIL]
+    const internRes = await pool.query(
+      `INSERT INTO users (email, password_hash, role, manager_id, full_name)
+       VALUES ($1, $2, 'INTERN', $3, 'Assessment Test Intern')
+       RETURNING id`,
+      [INTERN_EMAIL, 'test-password-hash', captainId]
     );
+    internId = internRes.rows[0].id;
 
-    if (existingOther.rowCount > 0) {
-      otherInternId = existingOther.rows[0].id;
-    } else {
-      const otherRes = await pool.query(
-        "INSERT INTO users (email, password_hash, role, full_name) VALUES ($1, $2, 'INTERN', 'Other Intern') RETURNING id",
-        [TEST_EMAIL, 'test-password-hash']
-      );
-      otherInternId = otherRes.rows[0].id;
-    }
+    const otherRes = await pool.query(
+      `INSERT INTO users (email, password_hash, role, full_name)
+       VALUES ($1, $2, 'INTERN', 'Assessment Other Intern')
+       RETURNING id`,
+      [OTHER_INTERN_EMAIL, 'test-password-hash']
+    );
+    otherInternId = otherRes.rows[0].id;
+
+    await pool.query(
+      `INSERT INTO assessments (
+         user_id,
+         score,
+         category,
+         status,
+         questions_count,
+         key_strengths,
+         improvement_areas,
+         next_actions,
+         feedback
+       ) VALUES ($1, 85, 'Excellent', 'COMPLETED', 50, $2, $3, $4, $5)`,
+      [
+        internId,
+        ['JavaScript Core', 'React Components', 'Problem Solving'],
+        ['SQL Optimization', 'CI/CD Deployment'],
+        ['Complete SQL indexing module', 'Deploy Vite to staging'],
+        'Assessment integration test fixture.',
+      ]
+    );
 
     internToken = generateAccessToken({ id: internId, role: 'INTERN' });
     captainToken = generateAccessToken({ id: captainId, role: 'CAPTAIN' });
@@ -55,12 +78,11 @@ describe('Assessments Integration Tests', () => {
   });
 
   afterAll(async () => {
-    if (otherInternId) {
-      await pool.query('DELETE FROM assessments WHERE user_id = $1', [
-        otherInternId,
-      ]);
-      await pool.query('DELETE FROM users WHERE id = $1', [otherInternId]);
-    }
+    await pool.query(
+      `DELETE FROM users
+       WHERE email = ANY($1::text[])`,
+      [TEST_EMAILS]
+    );
     await app.close();
   });
 

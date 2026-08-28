@@ -43,6 +43,13 @@ const STATUS_BADGE = {
 
 // A manager may add any member ranked below themselves.
 const ROLE_RANK = { ADMIN: 4, SENIOR_TL: 3, TL: 2, CAPTAIN: 1, INTERN: 0 };
+const DISPLAY_ROLE_ORDER = {
+  ADMIN: 0,
+  SENIOR_TL: 1,
+  TL: 2,
+  CAPTAIN: 3,
+  INTERN: 4,
+};
 const ASSIGNABLE = ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'];
 
 function rolesBelow(role) {
@@ -51,11 +58,12 @@ function rolesBelow(role) {
 }
 
 function attendancePct(m) {
-  const total = Number(m.attendance_total) || 0;
-  if (!total) return null;
+  const total = Number(m.attendance_total);
+  const present = Number(m.present_count);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (!Number.isFinite(present)) return null;
 
-  const score = Number(m.present_count) + Number(m.half_day_count) * 0.5;
-  return Math.round((score / total) * 100);
+  return Math.round((present / total) * 100);
 }
 
 function pctColor(p) {
@@ -160,12 +168,12 @@ function RatingWithBadge({ value }) {
         {roundedRating}
       </span>
       {isNotEligible && (
-        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60 whitespace-nowrap">
+        <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60 whitespace-nowrap">
           🔴 Not Eligible
         </span>
       )}
       {isEligible && (
-        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60 whitespace-nowrap">
+        <span className="px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60 whitespace-nowrap">
           🟢 Eligible
         </span>
       )}
@@ -188,21 +196,25 @@ const EDIT_FIELDS = [
 
 function StatCard({ label, value, sub }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none">
-      <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 opacity-10 dark:opacity-20" />
+    <div className="relative min-h-[190px] overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] dark:shadow-none">
+      <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-indigo-500/10 dark:bg-indigo-400/15" />
 
-      <div className="relative z-10">
-        <p className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          {value}
-        </p>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
-          {label}
-        </p>
-        {sub && (
-          <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
-            {sub}
+      <div className="relative z-10 flex h-full min-h-[150px] w-full flex-col justify-center">
+        <div className="shrink-0">
+          <p className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            {value}
           </p>
-        )}
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+            {label}
+          </p>
+        </div>
+        <div className="mt-0.5 min-h-[42px]">
+          {sub && (
+            <div className="text-xs text-slate-500 dark:text-slate-500">
+              {sub}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -217,9 +229,13 @@ function Avatar({ m, size = 'w-10 h-10' }) {
     />
   ) : (
     <div
-      className={`${size} rounded-2xl bg-gradient-to-br from-indigo-500 via-blue-500 to-violet-600 text-white flex items-center justify-center text-sm font-extrabold shadow-sm`}
+      className={`${size} relative isolate shrink-0 overflow-hidden rounded-2xl border border-indigo-400/35 bg-slate-900 text-white shadow-[0_7px_18px_rgba(15,23,42,0.28)] ring-1 ring-indigo-300/20 dark:border-indigo-400/30 dark:bg-slate-800`}
     >
-      {initials(m)}
+      <span className="absolute -right-3 -top-3 h-8 w-8 rounded-full bg-indigo-500/70 blur-[1px]" />
+      <span className="absolute -bottom-4 -left-3 h-9 w-9 rounded-full bg-blue-500/35 blur-sm" />
+      <span className="relative flex h-full w-full items-center justify-center text-sm font-extrabold tracking-wide drop-shadow-sm">
+        {initials(m)}
+      </span>
     </div>
   );
 }
@@ -820,7 +836,7 @@ function MemberDetail({ memberId, onClose }) {
                   <p className="text-white/80 text-sm">{member.email}</p>
 
                   <span
-                    className={`inline-flex mt-2 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                    className={`inline-flex mt-2 px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
                       ROLE_BADGE[member.role] || 'bg-white/20 text-white'
                     }`}
                   >
@@ -1285,57 +1301,72 @@ export default function Team() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
 
-    return members.filter((m) => {
-      if (roleFilter && m.role !== roleFilter) return false;
+    return members
+      .filter((m) => {
+        if (roleFilter && m.role !== roleFilter) return false;
 
-      if (deptFilter) {
-        const mDept = m.department_name || m.department_id || '';
-        if (mDept !== deptFilter) return false;
-      }
-
-      if (statusFilter) {
-        if (statusFilter === 'SUSPENDED') {
-          if (!m.suspended) return false;
-        } else {
-          const mStatus = m.internship_status || 'ACTIVE';
-          if (mStatus !== statusFilter) return false;
+        if (deptFilter) {
+          const mDept = m.department_name || m.department_id || '';
+          if (mDept !== deptFilter) return false;
         }
-      }
 
-      const rawRating = m.rating ?? m.avg_rating;
-      const numRating =
-        rawRating != null && rawRating !== '' ? Number(rawRating) : null;
-
-      if (ratingFilter) {
-        if (numRating == null || Number.isNaN(numRating)) return false;
-        if (Math.round(numRating) !== Number(ratingFilter)) return false;
-      }
-
-      if (eligibilityFilter) {
-        if (numRating == null || Number.isNaN(numRating)) return false;
-        const rounded = Math.round(numRating);
-        if (eligibilityFilter === 'ELIGIBLE' && (rounded < 5 || rounded > 10)) {
-          return false;
+        if (statusFilter) {
+          if (statusFilter === 'SUSPENDED') {
+            if (!m.suspended) return false;
+          } else {
+            const mStatus = m.internship_status || 'ACTIVE';
+            if (mStatus !== statusFilter) return false;
+          }
         }
-        if (
-          eligibilityFilter === 'NOT_ELIGIBLE' &&
-          (rounded < 1 || rounded > 4)
-        ) {
-          return false;
+
+        const rawRating = m.rating ?? m.avg_rating;
+        const numRating =
+          rawRating != null && rawRating !== '' ? Number(rawRating) : null;
+
+        if (ratingFilter) {
+          if (numRating == null || Number.isNaN(numRating)) return false;
+          if (Math.round(numRating) !== Number(ratingFilter)) return false;
         }
-      }
 
-      if (!q) return true;
+        if (eligibilityFilter) {
+          if (numRating == null || Number.isNaN(numRating)) return false;
+          const rounded = Math.round(numRating);
+          if (
+            eligibilityFilter === 'ELIGIBLE' &&
+            (rounded < 5 || rounded > 10)
+          ) {
+            return false;
+          }
+          if (
+            eligibilityFilter === 'NOT_ELIGIBLE' &&
+            (rounded < 1 || rounded > 4)
+          ) {
+            return false;
+          }
+        }
 
-      return [
-        m.full_name,
-        m.email,
-        m.college,
-        m.position,
-        m.id,
-        m.department_name,
-      ].some((v) => (v || '').toLowerCase().includes(q));
-    });
+        if (!q) return true;
+
+        return [
+          m.full_name,
+          m.email,
+          m.college,
+          m.position,
+          m.id,
+          m.department_name,
+        ].some((v) => (v || '').toLowerCase().includes(q));
+      })
+      .sort((a, b) => {
+        const roleDifference =
+          (DISPLAY_ROLE_ORDER[a.role] ?? 99) -
+          (DISPLAY_ROLE_ORDER[b.role] ?? 99);
+        if (roleDifference) return roleDifference;
+        return (a.full_name || a.email || '').localeCompare(
+          b.full_name || b.email || '',
+          undefined,
+          { sensitivity: 'base' }
+        );
+      });
   }, [
     members,
     search,
@@ -1402,8 +1433,44 @@ export default function Team() {
       (sum, m) => sum + (Number(m.pending_proofs) || 0),
       0
     );
+    const seniorTlCount = members.filter(
+      (member) => member.role === 'SENIOR_TL'
+    ).length;
+    const tlCount = members.filter((member) => member.role === 'TL').length;
+    const captainCount = members.filter(
+      (member) => member.role === 'CAPTAIN'
+    ).length;
+    const internCount = members.filter(
+      (member) => member.role === 'INTERN'
+    ).length;
+    const memberBreakdown = (
+      <span className="block text-[13px] font-semibold leading-5 text-slate-700 dark:text-slate-300">
+        <span className="flex items-center gap-2.5 whitespace-nowrap">
+          <span>
+            {seniorTlCount} {seniorTlCount === 1 ? 'Senior TL' : 'Senior TLs'}
+          </span>
+          <span className="font-extrabold text-indigo-400 dark:text-indigo-300">
+            •
+          </span>
+          <span>
+            {tlCount} {tlCount === 1 ? 'TL' : 'TLs'}
+          </span>
+        </span>
+        <span className="mt-0.5 flex items-center gap-2.5 whitespace-nowrap">
+          <span>
+            {captainCount} {captainCount === 1 ? 'Captain' : 'Captains'}
+          </span>
+          <span className="font-extrabold text-indigo-400 dark:text-indigo-300">
+            •
+          </span>
+          <span>
+            {internCount} {internCount === 1 ? 'Intern' : 'Interns'}
+          </span>
+        </span>
+      </span>
+    );
 
-    return { active, avgAtt, avgRating, pendingProofs };
+    return { active, avgAtt, avgRating, pendingProofs, memberBreakdown };
   }, [members]);
 
   const exportCsv = async () => {
@@ -1482,7 +1549,11 @@ export default function Team() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <StatCard label="Total members" value={members.length} />
+        <StatCard
+          label="Total members"
+          value={members.length}
+          sub={stats.memberBreakdown}
+        />
         <StatCard label="Active" value={stats.active} />
         <StatCard
           label="Avg attendance"
@@ -1520,7 +1591,7 @@ export default function Team() {
           onChange={setDeptFilter}
           options={departmentFilterOptions}
           placeholder="All departments"
-          className="w-full sm:w-44"
+          className="w-full sm:w-52 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
         />
 
         <CustomSelect
@@ -1528,7 +1599,7 @@ export default function Team() {
           onChange={setStatusFilter}
           options={STATUS_FILTER_OPTIONS}
           placeholder="All status"
-          className="w-full sm:w-36"
+          className="w-full sm:w-36 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
         />
 
         <CustomSelect
@@ -1536,7 +1607,7 @@ export default function Team() {
           onChange={setRoleFilter}
           options={roleFilterOptions}
           placeholder="All roles"
-          className="w-full sm:w-36"
+          className="w-full sm:w-36 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
         />
 
         <CustomSelect
@@ -1544,7 +1615,7 @@ export default function Team() {
           onChange={setRatingFilter}
           options={RATING_OPTIONS}
           placeholder="All Ratings"
-          className="w-full sm:w-36"
+          className="w-full sm:w-36 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
         />
 
         <CustomSelect
@@ -1552,10 +1623,10 @@ export default function Team() {
           onChange={setEligibilityFilter}
           options={ELIGIBILITY_OPTIONS}
           placeholder="All"
-          className="w-full sm:w-40"
+          className="w-full sm:w-40 [&>button]:h-12 [&>button]:flex [&>button]:items-center [&>button]:whitespace-nowrap"
         />
 
-        <div className="flex rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
+        <div className="flex h-12 items-stretch rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
           <button
             onClick={() => setView('table')}
             className={`px-4 py-3 text-sm font-bold transition ${
@@ -1587,19 +1658,35 @@ export default function Team() {
             : 'No members match your search.'}
         </div>
       ) : view === 'table' ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
+          <table className="w-full table-fixed text-sm">
             <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="p-4 font-extrabold">Member</th>
-                <th className="p-4 font-extrabold">Role</th>
-                <th className="p-4 font-extrabold">Department</th>
-                <th className="p-4 font-extrabold">Phone</th>
-                <th className="p-4 font-extrabold w-40">Attendance</th>
-                <th className="p-4 font-extrabold">Rating</th>
-                <th className="p-4 font-extrabold">Tasks</th>
-                <th className="p-4 font-extrabold">Pending</th>
-                <th className="p-4 font-extrabold">Status</th>
+                <th className="w-[25%] px-3 py-4 font-extrabold">Member</th>
+                <th className="w-[8%] px-1.5 py-4 font-extrabold text-center">
+                  Role
+                </th>
+                <th className="w-[9%] px-1.5 py-4 font-extrabold text-center">
+                  Department
+                </th>
+                <th className="w-[10%] px-1.5 py-4 font-extrabold text-center">
+                  Phone
+                </th>
+                <th className="w-[11%] px-1.5 py-4 font-extrabold text-center">
+                  Attendance
+                </th>
+                <th className="w-[12%] px-1.5 py-4 font-extrabold text-center">
+                  Rating
+                </th>
+                <th className="w-[7%] px-1.5 py-4 font-extrabold text-center">
+                  Tasks
+                </th>
+                <th className="w-[8%] px-1.5 py-4 font-extrabold text-center">
+                  Pending
+                </th>
+                <th className="w-[10%] px-1.5 py-4 font-extrabold text-center">
+                  Status
+                </th>
               </tr>
             </thead>
 
@@ -1617,25 +1704,25 @@ export default function Team() {
                     } hover:bg-indigo-50/50 dark:hover:bg-slate-800`}
                     onClick={() => setSelected(m.id)}
                   >
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
+                    <td className="px-3 py-4">
+                      <div className="flex min-w-0 items-center gap-3">
                         <Avatar m={m} />
 
-                        <div>
-                          <div className="font-extrabold text-slate-900 dark:text-white">
+                        <div className="min-w-0">
+                          <div className="truncate font-extrabold text-slate-900 dark:text-white">
                             {m.full_name || '—'}
                           </div>
 
-                          <div className="text-slate-500 dark:text-slate-400 text-xs">
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                             {m.email}
                           </div>
                         </div>
                       </div>
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       <span
-                        className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap ${
                           ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
                         }`}
                       >
@@ -1643,21 +1730,21 @@ export default function Team() {
                       </span>
                     </td>
 
-                    <td className="p-4 text-slate-700 dark:text-slate-300">
+                    <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
                       {m.department_name || '—'}
                     </td>
 
-                    <td className="p-4 text-slate-700 dark:text-slate-300">
+                    <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
                       {m.phone || '—'}
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       {pct === null ? (
                         <span className="text-slate-400 dark:text-slate-500">
                           No data
                         </span>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="mx-auto flex max-w-28 items-center justify-center gap-1.5">
                           <div className="flex-1 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                             <div
                               className={`h-full ${pctColor(pct)}`}
@@ -1671,15 +1758,15 @@ export default function Team() {
                       )}
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle [&>div]:justify-center">
                       <RatingWithBadge value={m.rating ?? m.avg_rating} />
                     </td>
 
-                    <td className="p-4 text-slate-700 dark:text-slate-300">
+                    <td className="px-1.5 py-4 text-center align-middle text-slate-700 dark:text-slate-300">
                       {m.verified_tasks}/{m.total_tasks}
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       {Number(m.pending_proofs) > 0 ? (
                         <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-900/60">
                           {m.pending_proofs} to verify
@@ -1691,14 +1778,14 @@ export default function Team() {
                       )}
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-1.5 py-4 text-center align-middle">
                       {m.suspended ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
+                        <span className="inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/60">
                           Suspended
                         </span>
                       ) : (
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          className={`inline-flex whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-bold ${
                             STATUS_BADGE[m.internship_status] ||
                             STATUS_BADGE.ACTIVE
                           }`}
@@ -1733,7 +1820,7 @@ export default function Team() {
                     </div>
 
                     <span
-                      className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold whitespace-nowrap ${
                         ROLE_BADGE[m.role] || ROLE_BADGE.INTERN
                       }`}
                     >

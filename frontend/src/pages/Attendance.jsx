@@ -1,15 +1,43 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Building2, CalendarCheck } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { CalendarCheck, Building2, Star, Target } from 'lucide-react';
+import api from '../lib/axios';
+import useAuthStore from '../store/auth';
 import AttendanceMarkForm from '../components/AttendanceMarkForm';
 import BulkAttendanceForm from '../components/BulkAttendanceForm';
 import CustomSelect from '../components/CustomSelect';
-import DepartmentAttendanceSheet from '../components/department/DepartmentAttendanceSheet';
 import { ApiErrorState } from '../components/ui';
-import api from '../lib/axios';
-import useAuthStore from '../store/auth';
+import DepartmentAttendanceSheet from '../components/department/DepartmentAttendanceSheet';
 
+function monthRange(month, today) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const from = `${month}-01`;
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0))
+    .toISOString()
+    .slice(0, 10);
+  return { from, to: month === today.slice(0, 7) ? today : lastDay };
+}
+const ATTENDANCE_ROLE_ORDER = {
+  ADMIN: 0,
+  SENIOR_TL: 1,
+  TL: 2,
+  CAPTAIN: 3,
+  INTERN: 4,
+};
+function sortAttendanceMembers(members) {
+  return [...members].sort((a, b) => {
+    const roleDifference =
+      (ATTENDANCE_ROLE_ORDER[a.role] ?? 99) -
+      (ATTENDANCE_ROLE_ORDER[b.role] ?? 99);
+    if (roleDifference) return roleDifference;
+    return String(a.full_name || a.email || '').localeCompare(
+      String(b.full_name || b.email || ''),
+      undefined,
+      { sensitivity: 'base' }
+    );
+  });
+}
 const STATUS_BADGE = {
   PRESENT:
     'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/60',
@@ -23,13 +51,18 @@ export default function Attendance({
   isProjectView = false,
   deptId: propDeptId,
   roster = [],
+  onViewAllAttendance,
 } = {}) {
   const { deptId: routeDeptId } = useParams();
   const deptId = propDeptId || routeDeptId;
   const user = useAuthStore((s) => s.user);
-  const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(user?.role);
-  const isManager = canMark;
+  const requestedDeptId = deptId || user?.department_id || '';
+  const canMark = ['CAPTAIN', 'TL', 'SENIOR_TL'].includes(user?.role);
   const isAdmin = user?.role === 'ADMIN';
+  const canViewAttendance = ['CAPTAIN', 'TL', 'SENIOR_TL', 'ADMIN'].includes(
+    user?.role
+  );
+  const isManager = canViewAttendance;
 
   const [viewUserId, setViewUserId] = useState(() => {
     if (isProjectView && roster.length > 0) {
@@ -39,11 +72,21 @@ export default function Attendance({
   });
   const [page, setPage] = useState(1);
   const [viewAll, setViewAll] = useState(false);
+  const [viewTransitioning, setViewTransitioning] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
-  const monthStart = `${today.slice(0, 8)}01`;
-  const [sheetFrom, setSheetFrom] = useState(monthStart);
-  const [sheetTo, setSheetTo] = useState(today);
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const { from: sheetFrom, to: sheetTo } = monthRange(selectedMonth, today);
   const limit = 30;
+
+  const switchAttendanceView = () => {
+    if (viewTransitioning) return;
+
+    setViewTransitioning(true);
+    window.setTimeout(() => {
+      setViewAll((current) => !current);
+      window.requestAnimationFrame(() => setViewTransitioning(false));
+    }, 160);
+  };
 
   useEffect(() => {
     if (isProjectView && roster.length > 0) {
@@ -65,8 +108,6 @@ export default function Attendance({
     enabled: isAdmin,
   });
 
-  const activeDepartment = departments.find((d) => d.id === deptId);
-
   // Managers can pick any team member; everyone can always see their own.
   const {
     data: team = [],
@@ -74,15 +115,41 @@ export default function Attendance({
     error: teamError,
     refetch: refetchTeam,
   } = useQuery({
-    queryKey: ['authorizedMembers', deptId],
+    queryKey: ['authorizedAttendanceMembers', user?.id, requestedDeptId],
     queryFn: () =>
       api
         .get('/attendance/authorized-members', {
-          params: { department_id: deptId || undefined },
+          params: { department_id: requestedDeptId || undefined },
         })
         .then((res) => res.data),
-    enabled: isManager && !isProjectView,
+    enabled: canViewAttendance && !isProjectView && !!user?.id,
   });
+
+  const teamDeptId = team.find((member) => member.department_id)?.department_id;
+  const resolvedDeptId = requestedDeptId || teamDeptId || '';
+  const departmentIsResolving =
+    isManager && !isProjectView && !resolvedDeptId && !teamIsError;
+
+  const activeDepartment = departments.find(
+    (department) => department.id === resolvedDeptId
+  );
+
+  const downloadAttendance = async () => {
+    const response = await api.get('/reports/export/attendance-detail-csv', {
+      params: {
+        from: sheetFrom,
+        to: sheetTo,
+        department_id: resolvedDeptId || undefined,
+      },
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(response.data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `attendance-${selectedMonth}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const {
     data: sheetData,
@@ -90,14 +157,14 @@ export default function Attendance({
     error: sheetError,
     refetch: refetchSheet,
   } = useQuery({
-    queryKey: ['departmentAttendanceSheet', deptId, sheetFrom, sheetTo],
+    queryKey: ['departmentAttendanceSheet', resolvedDeptId, sheetFrom, sheetTo],
     queryFn: () =>
       api
-        .get(`/attendance/department/${deptId}/sheet`, {
+        .get(`/attendance/department/${resolvedDeptId}/sheet`, {
           params: { from: sheetFrom, to: sheetTo },
         })
         .then((res) => res.data),
-    enabled: viewAll && !!deptId && !isProjectView,
+    enabled: viewAll && !!resolvedDeptId && !isProjectView,
   });
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['attendance', viewUserId, page],
@@ -116,18 +183,15 @@ export default function Attendance({
   const effectiveTeam = isProjectView ? roster : team;
 
   useEffect(() => {
-    if (!deptId || isProjectView || team.length === 0) return;
-
-    const selectedUserIsInDepartment = team.some(
-      (member) => member.id === viewUserId
-    );
-
-    if (!selectedUserIsInDepartment) {
-      setViewUserId(team[0].id);
+    if (!resolvedDeptId || isProjectView || team.length === 0) return;
+    const selectedUserIsVisible =
+      viewUserId === user?.id ||
+      team.some((member) => member.id === viewUserId);
+    if (!selectedUserIsVisible) {
+      setViewUserId(user?.id || sortAttendanceMembers(team)[0].id);
       setPage(1);
     }
-  }, [deptId, isProjectView, team, viewUserId]);
-
+  }, [resolvedDeptId, isProjectView, team, user?.id, viewUserId]);
   const selectedName =
     viewUserId === user?.id
       ? 'Me'
@@ -135,23 +199,28 @@ export default function Attendance({
         effectiveTeam.find((m) => m.id === viewUserId)?.email ||
         '';
 
-  const attendanceUserOptions = isProjectView
-    ? roster.map((m) => ({
-        value: m.id,
-        label: `${m.full_name || m.email} (${m.role})`,
-      }))
-    : [
-        {
-          value: user?.id || '',
-          label: `Me (${user?.email || 'Current user'})`,
-        },
-        ...team
-          .filter((m) => m.id !== user?.id)
-          .map((m) => ({
-            value: m.id,
-            label: `${m.full_name || m.email} (${m.role})`,
-          })),
-      ];
+  const attendanceOptionMembers = isProjectView
+    ? sortAttendanceMembers(roster)
+    : sortAttendanceMembers([
+        ...(user?.id
+          ? [
+              {
+                id: user.id,
+                full_name: user.full_name,
+                email: user.email,
+                role: user.role,
+                isCurrentUser: true,
+              },
+            ]
+          : []),
+        ...team.filter((member) => member.id !== user?.id),
+      ]);
+  const attendanceUserOptions = attendanceOptionMembers.map((member) => ({
+    value: member.id,
+    label: member.isCurrentUser
+      ? `Me (${member.email || 'Current user'}) - ${member.role}`
+      : `${member.full_name || member.email} (${member.role})`,
+  }));
 
   return (
     <div className="animate-fade-in-up">
@@ -236,7 +305,7 @@ export default function Attendance({
         <>
           <div className="bg-white dark:bg-slate-900 p-5 md:p-6 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none mb-5 border border-slate-200 dark:border-slate-700">
             <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-              View attendance of
+              View attendance for
             </label>
 
             {isManager ? (
@@ -252,24 +321,70 @@ export default function Attendance({
                   </div>
                 )}
 
-                <CustomSelect
-                  value={viewUserId}
-                  onChange={selectUser}
-                  options={attendanceUserOptions}
-                  placeholder="Select member"
-                  className="w-full max-w-sm"
-                  disabled={teamIsError}
-                  searchable={true}
-                />
-                {!isProjectView && deptId && (
-                  <button
-                    type="button"
-                    onClick={() => setViewAll((current) => !current)}
-                    className="mt-3 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-emerald-700"
-                  >
-                    {viewAll ? 'Individual View' : 'View All'}
-                  </button>
-                )}
+                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <CustomSelect
+                    value={viewUserId}
+                    onChange={selectUser}
+                    options={attendanceUserOptions}
+                    placeholder="Select member"
+                    className="w-full sm:max-w-sm"
+                    disabled={teamIsError}
+                    searchable={true}
+                  />
+
+                  {isProjectView && onViewAllAttendance ? (
+                    <button
+                      type="button"
+                      onClick={() => onViewAllAttendance(viewUserId)}
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-extrabold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
+                    >
+                      <CalendarCheck className="h-4 w-4" aria-hidden="true" />
+                      View all attendance
+                    </button>
+                  ) : (
+                    resolvedDeptId && (
+                      <button
+                        type="button"
+                        onClick={switchAttendanceView}
+                        aria-label={
+                          viewAll
+                            ? 'Switch to individual view'
+                            : 'View all attendance'
+                        }
+                        disabled={viewTransitioning}
+                        className={`relative h-11 shrink-0 overflow-hidden rounded-xl bg-emerald-600 text-sm font-extrabold text-white transition-[width,background-color] duration-300 ease-in-out hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 ${
+                          viewAll ? 'w-[152px]' : 'w-[104px]'
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`absolute inset-0 flex items-center justify-center whitespace-nowrap transition-[opacity,transform] duration-200 ease-out ${
+                            viewAll
+                              ? 'translate-y-0 opacity-100'
+                              : '-translate-y-1 opacity-0'
+                          }`}
+                        >
+                          Individual View
+                        </span>
+
+                        <span
+                          aria-hidden="true"
+                          className={`absolute inset-0 flex items-center justify-center whitespace-nowrap transition-[opacity,transform] duration-200 ease-out ${
+                            viewAll
+                              ? 'translate-y-1 opacity-0'
+                              : 'translate-y-0 opacity-100'
+                          }`}
+                        >
+                          View All
+                        </span>
+
+                        <span className="sr-only">
+                          {viewAll ? 'Individual View' : 'View All'}
+                        </span>
+                      </button>
+                    )
+                  )}
+                </div>
               </>
             ) : (
               <p className="text-slate-700 dark:text-slate-200 font-bold">
@@ -278,53 +393,59 @@ export default function Attendance({
             )}
           </div>
 
-          {viewAll && (
-            <div className="mb-5">
-              <DepartmentAttendanceSheet
-                departmentName={activeDepartment?.name}
-                data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
-                isLoading={sheetIsLoading}
-                error={sheetError}
-                onRetry={refetchSheet}
-              />
-            </div>
-          )}
-          {!viewAll && isLoading && (
-            <div className="flex justify-center p-8 mb-5">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
-            </div>
-          )}
-
-          {!viewAll && isError && (
-            <div className="mb-5">
-              <ApiErrorState
-                error={error}
-                title="Failed to load attendance"
-                fallback="Unable to load attendance records. Please try again."
-                onRetry={refetch}
-              />
-            </div>
-          )}
-
-          {!viewAll &&
-            !isLoading &&
-            !isError &&
-            (records.length === 0 ? (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-5">
-                <CalendarCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-
-                <p className="font-semibold">
-                  No attendance records for {selectedName || 'this user'}.
-                </p>
-              </div>
-            ) : (
+          <div
+            aria-live="polite"
+            className={`transition-[opacity,transform] duration-200 ease-out ${
+              viewTransitioning
+                ? 'translate-y-1 opacity-0'
+                : 'translate-y-0 opacity-100'
+            }`}
+          >
+            {viewAll && (
               <div className="mb-5">
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
-                  <div className="overflow-x-auto">
+                <DepartmentAttendanceSheet
+                  departmentName={activeDepartment?.name}
+                  data={sheetData}
+                  selectedMonth={selectedMonth}
+                  onMonthChange={setSelectedMonth}
+                  onDownload={downloadAttendance}
+                  isLoading={sheetIsLoading}
+                  error={sheetError}
+                  onRetry={refetchSheet}
+                />
+              </div>
+            )}
+            {!viewAll && isLoading && (
+              <div className="flex justify-center p-8 mb-5">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
+              </div>
+            )}
+
+            {!viewAll && isError && (
+              <div className="mb-5">
+                <ApiErrorState
+                  error={error}
+                  title="Failed to load attendance"
+                  fallback="Unable to load attendance records. Please try again."
+                  onRetry={refetch}
+                />
+              </div>
+            )}
+
+            {!viewAll &&
+              !isLoading &&
+              !isError &&
+              (records.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-5">
+                  <CalendarCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+
+                  <p className="font-semibold">
+                    No attendance records for {selectedName || 'this user'}.
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-5">
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                         <tr>
@@ -363,71 +484,74 @@ export default function Attendance({
                             </td>
 
                             <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                              {a.remarks || '—'}
+                              {a.remarks || 'ΓÇö'}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
-                  <span>
-                    {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
-                    {totalPages}
-                  </span>
+                  <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
+                    <span>
+                      {total} record{total === 1 ? '' : 's'} ┬╖ page {page} of{' '}
+                      {totalPages}
+                    </span>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                      disabled={page <= 1}
-                      className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
-                    >
-                      Previous
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                        disabled={page <= 1}
+                        className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
+                      >
+                        Previous
+                      </button>
 
-                    <button
-                      onClick={() =>
-                        setPage((p) => Math.min(p + 1, totalPages))
-                      }
-                      disabled={page >= totalPages}
-                      className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
-                    >
-                      Next
-                    </button>
+                      <button
+                        onClick={() =>
+                          setPage((p) => Math.min(p + 1, totalPages))
+                        }
+                        disabled={page >= totalPages}
+                        className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-
+              ))}
+          </div>
           {canMark && (
             <>
               <AttendanceMarkForm
                 roster={isProjectView ? roster : undefined}
-                departmentId={deptId}
+                departmentId={resolvedDeptId || undefined}
+              />
+              <BulkAttendanceForm
+                roster={isProjectView ? roster : undefined}
+                departmentId={resolvedDeptId || undefined}
               />
             </>
           )}
         </>
       ) : (
-        <div>
+        <>
           {canMark && (
             <>
               <AttendanceMarkForm
                 roster={isProjectView ? roster : undefined}
-                departmentId={deptId}
+                departmentId={resolvedDeptId || undefined}
               />
               <BulkAttendanceForm
                 roster={isProjectView ? roster : undefined}
-                departmentId={deptId}
+                departmentId={resolvedDeptId || undefined}
               />
             </>
           )}
 
           <div className="bg-white dark:bg-slate-900 p-5 md:p-6 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none mb-5 border border-slate-200 dark:border-slate-700">
             <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-              View attendance of
+              View attendance for
             </label>
 
             {isManager ? (
@@ -443,23 +567,32 @@ export default function Attendance({
                   </div>
                 )}
 
-                <CustomSelect
-                  value={viewUserId}
-                  onChange={selectUser}
-                  options={attendanceUserOptions}
-                  placeholder="Select member"
-                  className="w-full max-w-sm"
-                  disabled={teamIsError}
-                />
-                {!isProjectView && deptId && (
-                  <button
-                    type="button"
-                    onClick={() => setViewAll((current) => !current)}
-                    className="mt-3 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-emerald-700"
-                  >
-                    {viewAll ? 'Individual View' : 'View All'}
-                  </button>
-                )}
+                <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <CustomSelect
+                    value={viewUserId}
+                    onChange={selectUser}
+                    options={attendanceUserOptions}
+                    placeholder="Select member"
+                    className="w-full sm:max-w-sm"
+                    disabled={teamIsError}
+                    searchable={true}
+                  />
+                  {!isProjectView && departmentIsResolving && (
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 sm:ml-auto">
+                      Resolving department attendance...
+                    </p>
+                  )}
+                  {!isProjectView && resolvedDeptId && (
+                    <button
+                      type="button"
+                      onClick={switchAttendanceView}
+                      disabled={viewTransitioning}
+                      className="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-xl bg-emerald-600 px-5 text-sm font-extrabold text-white transition-colors hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-70 sm:ml-auto sm:w-auto"
+                    >
+                      {viewAll ? 'Individual View' : 'View All'}
+                    </button>
+                  )}
+                </div>
               </>
             ) : (
               <p className="text-slate-700 dark:text-slate-200 font-bold">
@@ -468,51 +601,57 @@ export default function Attendance({
             )}
           </div>
 
-          {viewAll && (
-            <div className="mb-5">
-              <DepartmentAttendanceSheet
-                departmentName={activeDepartment?.name}
-                data={sheetData}
-                from={sheetFrom}
-                to={sheetTo}
-                onFromChange={setSheetFrom}
-                onToChange={setSheetTo}
-                isLoading={sheetIsLoading}
-                error={sheetError}
-                onRetry={refetchSheet}
-              />
-            </div>
-          )}
-          {!viewAll && isLoading && (
-            <div className="flex justify-center p-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
-            </div>
-          )}
-
-          {!viewAll && isError && (
-            <ApiErrorState
-              error={error}
-              title="Failed to load attendance"
-              fallback="Unable to load attendance records. Please try again."
-              onRetry={refetch}
-            />
-          )}
-
-          {!viewAll &&
-            !isLoading &&
-            !isError &&
-            (records.length === 0 ? (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
-                <CalendarCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-
-                <p className="font-semibold">
-                  No attendance records for {selectedName || 'this user'}.
-                </p>
+          <div
+            aria-live="polite"
+            className={`transition-[opacity,transform] duration-200 ease-out ${
+              viewTransitioning
+                ? 'translate-y-1 opacity-0'
+                : 'translate-y-0 opacity-100'
+            }`}
+          >
+            {viewAll && (
+              <div className="mb-5">
+                <DepartmentAttendanceSheet
+                  departmentName={activeDepartment?.name}
+                  data={sheetData}
+                  selectedMonth={selectedMonth}
+                  onMonthChange={setSelectedMonth}
+                  onDownload={downloadAttendance}
+                  isLoading={sheetIsLoading}
+                  error={sheetError}
+                  onRetry={refetchSheet}
+                />
               </div>
-            ) : (
-              <>
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
-                  <div className="overflow-x-auto">
+            )}
+            {!viewAll && isLoading && (
+              <div className="flex justify-center p-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600" />
+              </div>
+            )}
+
+            {!viewAll && isError && (
+              <ApiErrorState
+                error={error}
+                title="Failed to load attendance"
+                fallback="Unable to load attendance records. Please try again."
+                onRetry={refetch}
+              />
+            )}
+
+            {!viewAll &&
+              !isLoading &&
+              !isError &&
+              (records.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
+                  <CalendarCheck className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+
+                  <p className="font-semibold">
+                    No attendance records for {selectedName || 'this user'}.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none overflow-hidden">
                     <table className="w-full text-sm">
                       <thead className="bg-slate-50 dark:bg-slate-950 text-left text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                         <tr>
@@ -551,44 +690,44 @@ export default function Attendance({
                             </td>
 
                             <td className="px-6 py-4 text-slate-600 dark:text-slate-300">
-                              {a.remarks || '—'}
+                              {a.remarks || 'ΓÇö'}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
-                  <span>
-                    {total} record{total === 1 ? '' : 's'} · page {page} of{' '}
-                    {totalPages}
-                  </span>
+                  <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
+                    <span>
+                      {total} record{total === 1 ? '' : 's'} ┬╖ page {page} of{' '}
+                      {totalPages}
+                    </span>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                      disabled={page <= 1}
-                      className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
-                    >
-                      Previous
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                        disabled={page <= 1}
+                        className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
+                      >
+                        Previous
+                      </button>
 
-                    <button
-                      onClick={() =>
-                        setPage((p) => Math.min(p + 1, totalPages))
-                      }
-                      disabled={page >= totalPages}
-                      className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
-                    >
-                      Next
-                    </button>
+                      <button
+                        onClick={() =>
+                          setPage((p) => Math.min(p + 1, totalPages))
+                        }
+                        disabled={page >= totalPages}
+                        className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold"
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </>
-            ))}
-        </div>
+                </>
+              ))}
+          </div>
+        </>
       )}
     </div>
   );

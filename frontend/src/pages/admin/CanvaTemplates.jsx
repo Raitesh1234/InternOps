@@ -393,14 +393,14 @@ function CanvaTemplates() {
       {showCreateModal &&
         createPortal(
           <div
-            className="fixed inset-0 z-50 overflow-y-auto"
+            className="internops-modal-backdrop fixed inset-0 z-50 overflow-y-auto"
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
           >
             <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
               <div
-                className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75"
+                className="fixed inset-0 transition-opacity bg-slate-950/60 backdrop-blur-sm"
                 onClick={() => setShowCreateModal(false)}
               />
 

@@ -53,6 +53,7 @@ describe('Ratings history search bar - TL/Senior TL direct intern lookup', () =>
   let queryClient;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -94,7 +95,7 @@ describe('Ratings history search bar - TL/Senior TL direct intern lookup', () =>
       </QueryClientProvider>
     );
 
-  it("shows the matched intern's ratings the moment a unique name is typed, with no click on the result needed", async () => {
+  it("shows the selected intern's ratings after choosing a unique search result", async () => {
     renderRatings();
 
     await waitFor(() => {
@@ -111,7 +112,10 @@ describe('Ratings history search bar - TL/Senior TL direct intern lookup', () =>
     const searchInput = screen.getByPlaceholderText('Search...');
     fireEvent.change(searchInput, { target: { value: 'Alice Cooper' } });
 
-    // No click on the found option - the intern's ratings should appear directly.
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Alice Cooper \(INTERN\)/i })
+    );
+
     await waitFor(() => {
       expect(
         screen.getByText('Excellent sprint, shipped ahead of schedule.')
@@ -136,7 +140,7 @@ describe('Ratings history search bar - TL/Senior TL direct intern lookup', () =>
       'Good start, needs to speak up more in standups.',
     ]);
 
-    // The trigger now reflects the auto-selected member.
+    // The trigger reflects the selected member.
     expect(
       screen.getByRole('button', { name: /Alice Cooper \(INTERN\)/i })
     ).toBeInTheDocument();
@@ -163,5 +167,7 @@ describe('Ratings history search bar - TL/Senior TL direct intern lookup', () =>
     expect(
       screen.queryByText('Excellent sprint, shipped ahead of schedule.')
     ).not.toBeInTheDocument();
+    expect(api.get).not.toHaveBeenCalledWith('/ratings/user-1');
+    expect(api.get).not.toHaveBeenCalledWith('/ratings/user-2');
   });
 });

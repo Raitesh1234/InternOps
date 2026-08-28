@@ -1,70 +1,15 @@
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import api from '../lib/axios';
 import useAuthStore from '../store/auth';
+import NoticeBoard from '../components/NoticeBoard';
 
 const UPTOSKILLS_LOGO = '/UptoSkills.webp';
 
-// Category label colours
-const CATEGORY_STYLES = {
-  REMINDER: 'text-indigo-200',
-  NEWS: 'text-emerald-300',
-  ALERT: 'text-red-300',
-  GENERAL: 'text-slate-300',
-};
-
-// Notice list — owns its own loading / error / empty states
 function NoticeList() {
-  const {
-    data: notices,
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ['public-notices'],
-    queryFn: () => api.get('/notices/public').then((r) => r.data),
-    staleTime: 1000 * 60 * 5, // cache for 5 min
-    retry: 1,
-  });
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        {[1, 2].map((n) => (
-          <div key={n} className="pt-4 first:pt-0">
-            <div className="h-3 w-24 bg-white/10 rounded mb-2" />
-            <div className="h-4 w-full bg-white/5 rounded" />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (isError || !notices?.length) {
-    return (
-      <p className="text-xs text-white/40 italic">
-        {isError ? 'Announcements unavailable.' : 'No active notices.'}
-      </p>
-    );
-  }
-
-  return (
-    <div className="notice-scrollbar max-h-[500px] overflow-y-auto pr-2 space-y-4 divide-y divide-white/10">
-      {notices.map((notice) => (
-        <div key={notice.id} className="pt-4 first:pt-0">
-          <p
-            className={`text-xs font-extrabold uppercase tracking-wider ${CATEGORY_STYLES[notice.category] ?? CATEGORY_STYLES.GENERAL}`}
-          >
-            {notice.title}
-          </p>
-          <p className="text-sm text-white/75 mt-1 leading-relaxed">
-            {notice.content}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
+  return <NoticeBoard />;
 }
 
 export default function Login() {
@@ -80,7 +25,7 @@ export default function Login() {
       api.post('/auth/login', creds).then((res) => res.data),
     onSuccess: (data) => {
       setAuth({ accessToken: data.accessToken, user: data.user });
-      navigate('/');
+      navigate(data.user?.mustChangePassword ? '/profile' : '/');
     },
     onError: (err) => setError(err.response?.data?.error || 'Login failed'),
   });

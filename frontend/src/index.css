@@ -270,3 +270,43 @@ html.dark select option:hover {
   scrollbar-width: thin;
   scrollbar-color: rgba(129, 140, 248, 0.6) transparent;
 }
+
+/* Shared modal presentation: consistent dimming, blur, elevation, and motion. */
+@keyframes internops-modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes internops-modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.75rem, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.internops-modal-backdrop {
+  animation: internops-modal-backdrop-in 200ms ease-out both;
+}
+
+.internops-modal-backdrop > .internops-modal-panel,
+.internops-modal-panel {
+  animation: internops-modal-panel-in 200ms ease-out both;
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .internops-modal-backdrop,
+  .internops-modal-backdrop > .internops-modal-panel,
+  .internops-modal-panel {
+    animation-duration: 1ms;
+  }
+}

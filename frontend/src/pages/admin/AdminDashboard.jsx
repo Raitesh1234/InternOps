@@ -20,6 +20,7 @@ import CreateUserModal from '../../components/admin/CreateUserModal';
 import EditUserModal from '../../components/admin/EditUserModal';
 import CustomSelect from '../../components/CustomSelect';
 import BulkUserModal from '../../components/admin/BulkUserModal';
+import WorkbookImportModal from '../../components/admin/WorkbookImportModal';
 
 const ROLE_COLOR = {
   ADMIN:
@@ -84,6 +85,7 @@ export default function AdminDashboard() {
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [bulkUserOpen, setBulkUserOpen] = useState(false);
+  const [workbookImportOpen, setWorkbookImportOpen] = useState(false);
 
   const limit = 10;
 
@@ -196,6 +198,12 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setWorkbookImportOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
+          >
+            <span>Preview Workbook</span>
+          </button>
           <button
             onClick={() => setBulkUserOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-brand-green hover:opacity-90 text-slate-950 font-bold rounded-lg transition text-sm shadow-md"
@@ -403,38 +411,38 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
-
-      {/* Pagination */}
+      {/* Pagination summary */}
       {total > 0 && (
-        <div className="flex items-center justify-between mt-4 text-sm text-slate-500 dark:text-slate-400">
+        <div className="mt-3 flex items-center justify-between px-1 text-sm text-slate-500 dark:text-slate-400">
           <span>
             {total} user{total === 1 ? '' : 's'} · page {page} of {totalPages}
           </span>
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-              aria-label="Previous page"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
+          {totalPages > 1 && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-              aria-label="Next page"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                aria-label="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       )}
-
       <CreateUserModal
         open={createUserOpen}
         onClose={() => setCreateUserOpen(false)}
@@ -449,6 +457,10 @@ export default function AdminDashboard() {
       <BulkUserModal
         open={bulkUserOpen}
         onClose={() => setBulkUserOpen(false)}
+      />
+      <WorkbookImportModal
+        open={workbookImportOpen}
+        onClose={() => setWorkbookImportOpen(false)}
       />
     </div>
   );

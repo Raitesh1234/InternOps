@@ -407,6 +407,36 @@ async function callFastAPI(messages) {
   return data.content;
 }
 
+async function callFastAPIImage(prompt) {
+  const baseUrl = config.ai.fastapiUrl || 'http://localhost:8000';
+  const response = await fetchWithTimeout(`${baseUrl}/ai/generate-image`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prompt }),
+  });
+
+  if (!response.ok) {
+    const err = new Error(
+      `fastapi image service failed with status ${response.status}`
+    );
+    err.statusCode = response.status;
+    throw err;
+  }
+
+  const data = await parseJsonResponseWithLimit(response, 'fastapi');
+  if (!data || !data.image_base64) {
+    throw new Error('fastapi image service returned empty response');
+  }
+
+  return data;
+}
+
+async function generateAIImage({ prompt }) {
+  return callFastAPIImage(prompt);
+}
+
 const providerRegistry = {
   fastapi: {
     key: () => config.ai.fastapiUrl || 'http://localhost:8000',
@@ -532,6 +562,7 @@ function getProviderHealth() {
 
 module.exports = {
   generateAIResponse,
+  generateAIImage,
   getProviderHealth,
   ResponseSizeLimitError,
   // Exported for testing regression

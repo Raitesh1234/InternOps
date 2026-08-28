@@ -108,16 +108,98 @@ def test_chat_happy_path_with_mocked_provider(client, monkeypatch):
     assert body == {"provider": "fake-provider", "cached": False, "content": "hi there!"}
 
 
-def test_messages_to_prompt_flattens_roles():
-    from app.api.ai_routes import _messages_to_prompt
+def test_generate_requires_prompt_or_messages(client):
+    r = client.post("/ai/generate", json={})
+    assert r.status_code == 422  # pydantic model_validator raises ValueError
 
-    prompt = _messages_to_prompt(
-        [
-            {"role": "system", "content": "Be concise."},
-            {"role": "user", "content": "Hi"},
-        ]
+
+def test_generate_rejects_invalid_role(client):
+    r = client.post(
+        "/ai/generate", json={"messages": [{"role": "bogus", "content": "hi"}]}
     )
-    assert prompt == "System: Be concise.\n\nUser: Hi"
+    assert r.status_code == 422  # pydantic enum validation
+
+
+def test_generate_preserves_structured_messages(client, monkeypatch):
+    import app.api.ai_routes as ai_routes_module
+
+    captured = {}
+
+    class FakeProvider:
+        provider_name = "fake-provider"
+
+        async def generate_chat(self, messages, temperature=0.7, **kwargs):
+            captured["messages"] = messages
+            captured["temperature"] = temperature
+            return "structured reply"
+
+        async def generate_text(self, prompt, temperature=0.7, **kwargs):
+            captured["flattened_prompt"] = prompt
+            return "flattened reply"
+
+    monkeypatch.setattr(
+        ai_routes_module, "get_provider", lambda: FakeProvider()
+    )
+
+    r = client.post(
+        "/ai/generate",
+        json={
+            "messages": [
+                {"role": "system", "content": "Be concise."},
+                {"role": "user", "content": "Hi"},
+                {"role": "assistant", "content": "Hello!"},
+                {"role": "user", "content": "How are you?"},
+            ],
+            "temperature": 0.3,
+        },
+    )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {
+        "provider": "fake-provider",
+        "cached": False,
+        "content": "structured reply",
+    }
+
+    # The conversation must reach the provider as structured messages,
+    # not collapsed into a single flattened prompt string.
+    assert "flattened_prompt" not in captured
+    assert captured["messages"] == [
+        {"role": "system", "content": "Be concise."},
+        {"role": "user", "content": "Hi"},
+        {"role": "assistant", "content": "Hello!"},
+        {"role": "user", "content": "How are you?"},
+    ]
+    assert captured["temperature"] == 0.3
+
+
+def test_generate_falls_back_to_flat_prompt(client, monkeypatch):
+    import app.api.ai_routes as ai_routes_module
+
+    captured = {}
+
+    class FakeProvider:
+        provider_name = "fake-provider"
+
+        async def generate_chat(self, messages, temperature=0.7, **kwargs):
+            captured["messages"] = messages
+            return "structured reply"
+
+        async def generate_text(self, prompt, temperature=0.7, **kwargs):
+            captured["flattened_prompt"] = prompt
+            return "flattened reply"
+
+    monkeypatch.setattr(
+        ai_routes_module, "get_provider", lambda: FakeProvider()
+    )
+
+    r = client.post("/ai/generate", json={"prompt": "hello"})
+
+    assert r.status_code == 200
+    assert r.json()["content"] == "flattened reply"
+    assert captured["flattened_prompt"] == "hello"
+    assert "messages" not in captured
 
 
 def test_health_endpoint(client, monkeypatch):
@@ -211,14 +293,14 @@ def test_chat_uses_cache_for_identical_requests(client, monkeypatch):
 
     calls = 0
 
-    async def fake_generate(prompt, temperature=0.7, **kwargs):
+    async def fake_generate(messages, temperature=0.7, **kwargs):
         nonlocal calls
         calls += 1
         return "cached response", "fake-provider"
 
     monkeypatch.setattr(
         ai_routes_module.ai_orchestrator,
-        "generate_text_with_fallback",
+        "generate_chat_with_fallback",
         fake_generate,
     )
 
