@@ -9,6 +9,7 @@ const argon2 = require('argon2');
 const { z } = require('zod');
 const authRepo = require('../auth/repository');
 const { toSchema } = require('../../utils/schemaHelper');
+const { isValidStep } = require('../../utils/hierarchy');
 
 const listUsersQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
@@ -25,6 +26,29 @@ const listUsersQuerySchema = z.object({
     .default('created_at'),
   sortOrder: z.enum(['asc', 'desc']).optional().default('asc'),
 });
+
+const USER_ROLES = [
+  'ADMIN',
+  'MANAGEMENT',
+  'HR',
+  'SENIOR_TL',
+  'TL',
+  'CAPTAIN',
+  'INTERN',
+];
+
+const updateUserSchema = z
+  .object({
+    full_name: z.string().trim().min(1).max(255).optional(),
+    email: z.string().trim().email().max(255).optional(),
+    role: z.enum(USER_ROLES).optional(),
+    department_id: z.string().uuid().nullable().optional(),
+    manager_id: z.string().uuid().nullable().optional(),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one editable field is required',
+  });
 
 const allowedAvatarExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
 

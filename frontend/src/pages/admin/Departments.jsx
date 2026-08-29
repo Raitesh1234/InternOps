@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -10,8 +10,10 @@ import {
   CalendarCheck,
   Star,
   Target,
+  UserCog,
 } from 'lucide-react';
 import api from '../../lib/axios';
+import ManageTlModal from '../../components/admin/ManageTlModal';
 import {
   Card,
   Btn,
@@ -28,6 +30,7 @@ export default function Departments() {
   const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [managingDepartment, setManagingDepartment] = useState(null);
 
   const {
     data: departments = [],
@@ -233,7 +236,7 @@ export default function Departments() {
               >
                 <Link
                   to={`/admin/departments/${d.id}/attendance`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 transition-shadow duration-200 ease-out hover:bg-emerald-200 dark:hover:bg-white/10 hover:ring-1 hover:ring-emerald-400/40"
                   title="View & manage attendance for this department"
                 >
                   <CalendarCheck className="w-3.5 h-3.5" />
@@ -242,7 +245,7 @@ export default function Departments() {
 
                 <Link
                   to={`/admin/departments/${d.id}/ratings`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60 transition"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 transition-shadow duration-200 ease-out hover:bg-amber-200 dark:hover:bg-white/10 hover:ring-1 hover:ring-amber-400/40 "
                   title="View ratings for this department"
                 >
                   <Star className="w-3.5 h-3.5" />
@@ -251,16 +254,42 @@ export default function Departments() {
 
                 <Link
                   to={`/admin/departments/${d.id}/tasks`}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 transition-shadow duration-200 ease-out hover:bg-indigo-200 dark:hover:bg-white/10 hover:ring-1 hover:ring-indigo-400/40 "
                   title="View tasks for this department"
                 >
                   <Target className="w-3.5 h-3.5" />
                   Tasks
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => setManagingDepartment(d)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 transition-shadow duration-200 ease-out hover:ring-1 hover:ring-violet-400/40 "
+                  title="Replace this department's Senior TL safely"
+                >
+                  <UserCog className="w-3.5 h-3.5" />
+                  Manage Senior TL
+                </button>
               </div>
             </Card>
           ))}
         </div>
+      )}
+      {managingDepartment && (
+        <ManageTlModal
+          department={managingDepartment}
+          onClose={() => setManagingDepartment(null)}
+          onCompleted={async () => {
+            setManagingDepartment(null);
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['departments'] }),
+              queryClient.invalidateQueries({ queryKey: ['departmentTeams'] }),
+              queryClient.invalidateQueries({
+                queryKey: ['departmentSeniorTlCandidates'],
+              }),
+              queryClient.invalidateQueries({ queryKey: ['teamMembers'] }),
+            ]);
+          }}
+        />
       )}
     </div>
   );

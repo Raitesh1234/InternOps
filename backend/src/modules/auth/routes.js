@@ -1,6 +1,3 @@
-const {
-  sanitizationMiddleware: sanitize,
-} = require('../../middleware/sanitize');
 const service = require('./service');
 const { z } = require('zod');
 const rbac = require('../../middleware/rbac');
@@ -25,7 +22,7 @@ async function routes(fastify) {
   fastify.post(
     '/register',
     {
-      preHandler: [auth, rbac('ADMIN'), sanitize],
+      preHandler: [auth, rbac('ADMIN')],
       schema: {
         tags: ['Authentication'],
         description: 'Register a new user (Admin only)',
@@ -37,7 +34,15 @@ async function routes(fastify) {
             password: { type: 'string', minLength: 8 },
             role: {
               type: 'string',
-              enum: ['ADMIN', 'SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+              enum: [
+                'ADMIN',
+                'MANAGEMENT',
+                'HR',
+                'SENIOR_TL',
+                'TL',
+                'CAPTAIN',
+                'INTERN',
+              ],
             },
             managerId: { type: 'string', format: 'uuid' },
             departmentId: { type: 'string', format: 'uuid' },
@@ -56,7 +61,7 @@ async function routes(fastify) {
   fastify.post(
     '/register/bulk',
     {
-      preHandler: [auth, rbac('ADMIN'), sanitize],
+      preHandler: [auth, rbac('ADMIN')],
       schema: {
         tags: ['Authentication'],
         description: 'Bulk register users (Admin only)',
@@ -77,7 +82,15 @@ async function routes(fastify) {
                   password: { type: 'string', minLength: 8 },
                   role: {
                     type: 'string',
-                    enum: ['SENIOR_TL', 'TL', 'CAPTAIN', 'INTERN'],
+                    enum: [
+                      'ADMIN',
+                      'MANAGEMENT',
+                      'HR',
+                      'SENIOR_TL',
+                      'TL',
+                      'CAPTAIN',
+                      'INTERN',
+                    ],
                   },
                   managerId: { type: 'string', format: 'uuid' },
                   departmentId: { type: 'string', format: 'uuid' },
@@ -180,7 +193,7 @@ async function routes(fastify) {
   fastify.post(
     '/login',
     {
-      preHandler: [bruteForceCheck, sanitize],
+      preHandler: [bruteForceCheck],
       schema: {
         tags: ['Authentication'],
         description: 'Login with email and password',
@@ -239,7 +252,6 @@ async function routes(fastify) {
   fastify.post(
     '/refresh',
     {
-      preHandler: [sanitize],
       schema: { tags: ['Authentication'], description: 'Refresh access token' },
     },
     async (req, reply) => {
@@ -269,7 +281,7 @@ async function routes(fastify) {
   fastify.post(
     '/logout',
     {
-      preHandler: [auth, sanitize],
+      preHandler: [auth],
       schema: {
         tags: ['Authentication'],
         description: 'Logout and revoke refresh token',
@@ -318,7 +330,6 @@ async function routes(fastify) {
   fastify.post(
     '/verify-email',
     {
-      preHandler: [sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Verify email with token',
@@ -340,7 +351,7 @@ async function routes(fastify) {
   fastify.post(
     '/resend-verification',
     {
-      preHandler: [auth, sanitize],
+      preHandler: [auth],
       schema: {
         tags: ['Authentication'],
         description: 'Resend verification email',
@@ -358,7 +369,6 @@ async function routes(fastify) {
   fastify.post(
     '/forgot-password',
     {
-      preHandler: [sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Send password reset email',
@@ -394,7 +404,6 @@ async function routes(fastify) {
   fastify.post(
     '/reset-password',
     {
-      preHandler: [sanitize],
       schema: {
         tags: ['Authentication'],
         description: 'Reset password with token',

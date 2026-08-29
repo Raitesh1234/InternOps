@@ -54,7 +54,7 @@ async function routes(fastify) {
   fastify.get(
     '/:deptId/teams',
     {
-      preHandler: [auth, rbac('ADMIN')],
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL')],
       schema: {
         tags: ['Departments'],
         description: 'List department teams by lead',
@@ -66,6 +66,12 @@ async function routes(fastify) {
       },
     },
     async (req, reply) => {
+      if (
+        req.user.role === 'SENIOR_TL' &&
+        req.user.departmentId !== req.params.deptId
+      ) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
       const parsed = z
         .object({ deptId: z.string().uuid() })
         .safeParse(req.params);
@@ -81,6 +87,69 @@ async function routes(fastify) {
     }
   );
 
+  // Replace the single Senior TL without moving existing assignments.
+  fastify.post(
+    '/:deptId/senior-tl-handover',
+    {
+      preHandler: [auth, rbac('ADMIN'), sanitize],
+      schema: {
+        tags: ['Departments'],
+        description: 'Atomically replace the single department Senior TL',
+        params: {
+          type: 'object',
+          required: ['deptId'],
+          properties: { deptId: { type: 'string', format: 'uuid' } },
+        },
+        body: {
+          type: 'object',
+          required: ['outgoing_lead_id', 'replacement_id', 'outgoing_role'],
+          additionalProperties: false,
+          properties: {
+            outgoing_lead_id: { type: 'string', format: 'uuid' },
+            replacement_id: { type: 'string', format: 'uuid' },
+            outgoing_role: {
+              type: 'string',
+              enum: ['TL', 'CAPTAIN', 'INTERN'],
+            },
+            suspend_outgoing: { type: 'boolean', default: false },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = z
+        .object({
+          outgoing_lead_id: z.string().uuid(),
+          replacement_id: z.string().uuid(),
+          outgoing_role: z.enum(['TL', 'CAPTAIN', 'INTERN']),
+          suspend_outgoing: z.boolean().optional().default(false),
+        })
+        .safeParse(req.body);
+      if (!parsed.success)
+        return reply
+          .status(400)
+          .send({ error: 'Invalid Senior TL handover request' });
+      if (parsed.data.outgoing_lead_id === parsed.data.replacement_id) {
+        return reply
+          .status(400)
+          .send({ error: 'Replacement must be a different user' });
+      }
+      try {
+        return await service.handoverSeniorTl({
+          departmentId: req.params.deptId,
+          outgoingLeadId: parsed.data.outgoing_lead_id,
+          replacementId: parsed.data.replacement_id,
+          outgoingRole: parsed.data.outgoing_role,
+          actorId: req.user.id,
+          suspendOutgoing: parsed.data.suspend_outgoing,
+        });
+      } catch (error) {
+        if (error.statusCode)
+          return reply.status(error.statusCode).send({ error: error.message });
+        throw error;
+      }
+    }
+  );
   // Delete department
   fastify.delete(
     '/:id',

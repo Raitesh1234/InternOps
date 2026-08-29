@@ -267,7 +267,9 @@ export function StatCard({
           </p>
 
           {sub && (
-            <p className="text-xs text-slate-500 dark:text-slate-500">{sub}</p>
+            <p className="mt-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {sub}
+            </p>
           )}
         </div>
 
@@ -466,13 +468,13 @@ export function ConfirmationModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+      className="internops-modal-backdrop fixed inset-0 z-[9999] flex items-center justify-center p-4"
       onClick={handleClose}
     >
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
+        className="internops-modal-panel w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-slate-200 dark:border-slate-700">

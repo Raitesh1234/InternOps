@@ -6,6 +6,7 @@ import api from '../lib/axios';
 import useAuthStore from '../store/auth';
 import RatingForm from '../components/RatingForm';
 import CustomSelect from '../components/CustomSelect';
+import DepartmentRatingsSheet from '../components/department/DepartmentRatingsSheet';
 
 function Stars({ value }) {
   if (value == null || value === '') {
@@ -58,6 +59,20 @@ export default function Ratings({
   const isAdmin = user?.role === 'ADMIN';
 
   const [viewDepartmentId, setViewDepartmentId] = useState(deptId || '');
+  const [viewAll, setViewAll] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const [selectedMonth, setSelectedMonth] = useState(today.slice(0, 7));
+  const [selectedYear, selectedMonthNumber] = selectedMonth
+    .split('-')
+    .map(Number);
+  const sheetFrom = `${selectedMonth}-01`;
+  const selectedMonthEnd = new Date(
+    Date.UTC(selectedYear, selectedMonthNumber, 0)
+  )
+    .toISOString()
+    .slice(0, 10);
+  const sheetTo =
+    selectedMonth === today.slice(0, 7) ? today : selectedMonthEnd;
   const [viewUserId, setViewUserId] = useState(() => {
     if (isProjectView && roster.length > 0) {
       return roster[0].id;
@@ -70,16 +85,21 @@ export default function Ratings({
   useEffect(() => {
     if (isProjectView) {
       setViewDepartmentId(deptId || '');
+
       if (roster.length > 0) {
-        setViewUserId(roster[0].id);
+        setViewUserId((currentUserId) => currentUserId || roster[0].id);
       }
-    } else {
-      if (deptId) {
-        setViewDepartmentId(deptId);
-        setViewUserId('');
-      } else {
-        if (user?.id && !viewUserId) setViewUserId(user.id);
-      }
+
+      return;
+    }
+
+    if (deptId) {
+      setViewDepartmentId(deptId);
+      return;
+    }
+
+    if (user?.id) {
+      setViewUserId((currentUserId) => currentUserId || user.id);
     }
   }, [isProjectView, deptId, roster, user?.id]);
 
@@ -96,16 +116,33 @@ export default function Ratings({
   });
 
   const {
+    data: sheetData,
+    isLoading: sheetIsLoading,
+    error: sheetError,
+    refetch: refetchSheet,
+  } = useQuery({
+    queryKey: ['departmentRatingsSheet', activeDeptId, sheetFrom, sheetTo],
+    queryFn: () =>
+      api
+        .get(`/ratings/department/${activeDeptId}/sheet`, {
+          params: { from: sheetFrom, to: sheetTo },
+        })
+        .then((res) => res.data),
+    enabled: viewAll && !!activeDeptId && !isProjectView,
+  });
+
+  const {
     data: ratings,
     isLoading,
     error,
   } = useQuery({
     queryKey: ['ratings', viewUserId],
     queryFn: () => api.get(`/ratings/${viewUserId}`).then((res) => res.data),
-    enabled: !!viewUserId,
+    enabled: !!viewUserId && !viewAll,
   });
 
   const handleViewDepartmentChange = (dId) => {
+    setViewAll(false);
     setViewDepartmentId(dId);
     if (dId) {
       setViewUserId('');
@@ -131,6 +168,26 @@ export default function Ratings({
   const filteredTeam = isProjectView
     ? roster
     : team.filter((m) => !activeDeptId || m.department_id === activeDeptId);
+
+  useEffect(() => {
+    if (!deptId || isProjectView || team.length === 0) return;
+
+    const departmentMembers = team.filter(
+      (member) => member.department_id === deptId
+    );
+
+    if (departmentMembers.length === 0) return;
+
+    setViewUserId((currentUserId) => {
+      const selectedUserIsInDepartment = departmentMembers.some(
+        (member) => member.id === currentUserId
+      );
+
+      return selectedUserIsInDepartment
+        ? currentUserId
+        : departmentMembers[0].id;
+    });
+  }, [deptId, isProjectView, team]);
 
   const ratingUserOptions = isProjectView
     ? roster.map((m) => ({
@@ -305,6 +362,15 @@ export default function Ratings({
                       className="w-full"
                       searchable={true}
                     />
+                    {!isProjectView && activeDeptId && (
+                      <button
+                        type="button"
+                        onClick={() => setViewAll((current) => !current)}
+                        className="mt-3 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400"
+                      >
+                        {viewAll ? 'Individual View' : 'View All'}
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (
@@ -320,19 +386,33 @@ export default function Ratings({
             </div>
           </div>
 
-          {isLoading && (
+          {viewAll && (
+            <div className="mb-6">
+              <DepartmentRatingsSheet
+                departmentName={activeDepartment?.name}
+                data={sheetData}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
+                isLoading={sheetIsLoading}
+                error={sheetError}
+                onRetry={refetchSheet}
+              />
+            </div>
+          )}
+
+          {!viewAll && isLoading && (
             <div className="flex justify-center p-8 mb-6">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
             </div>
           )}
 
-          {error && (
+          {!viewAll && error && (
             <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60 mb-6">
               {error.response?.data?.error || 'Failed to load ratings'}
             </div>
           )}
 
-          {!viewUserId && !isLoading && (
+          {!viewAll && !viewUserId && !isLoading && (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-6">
               <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
               <p className="font-semibold">
@@ -341,7 +421,8 @@ export default function Ratings({
             </div>
           )}
 
-          {ratings &&
+          {!viewAll &&
+            ratings &&
             (ratings.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400 mb-6">
                 <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
@@ -467,6 +548,15 @@ export default function Ratings({
                       className="w-full"
                       searchable={true}
                     />
+                    {!isProjectView && activeDeptId && (
+                      <button
+                        type="button"
+                        onClick={() => setViewAll((current) => !current)}
+                        className="mt-3 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-slate-950 hover:bg-amber-400"
+                      >
+                        {viewAll ? 'Individual View' : 'View All'}
+                      </button>
+                    )}
                   </div>
                 </>
               ) : (
@@ -482,19 +572,33 @@ export default function Ratings({
             </div>
           </div>
 
-          {isLoading && (
+          {viewAll && (
+            <div className="mb-6">
+              <DepartmentRatingsSheet
+                departmentName={activeDepartment?.name}
+                data={sheetData}
+                selectedMonth={selectedMonth}
+                onMonthChange={setSelectedMonth}
+                isLoading={sheetIsLoading}
+                error={sheetError}
+                onRetry={refetchSheet}
+              />
+            </div>
+          )}
+
+          {!viewAll && isLoading && (
             <div className="flex justify-center p-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500" />
             </div>
           )}
 
-          {error && (
+          {!viewAll && error && (
             <div className="bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 p-4 rounded-2xl border border-red-100 dark:border-red-900/60">
               {error.response?.data?.error || 'Failed to load ratings'}
             </div>
           )}
 
-          {!viewUserId && !isLoading && (
+          {!viewAll && !viewUserId && !isLoading && (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
               <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
               <p className="font-semibold">
@@ -503,7 +607,8 @@ export default function Ratings({
             </div>
           )}
 
-          {ratings &&
+          {!viewAll &&
+            ratings &&
             (ratings.length === 0 ? (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-[0_14px_35px_rgba(15,23,42,0.06)] dark:shadow-none p-12 text-center text-slate-500 dark:text-slate-400">
                 <Star className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />

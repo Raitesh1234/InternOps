@@ -141,14 +141,14 @@ export default function RatingForm({ roster, departmentId: propDeptId }) {
     isModalOpen &&
     createPortal(
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+        className="internops-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
         onClick={handleBackdropClick}
       >
         <div
           role="dialog"
           aria-modal="true"
           aria-labelledby="rating-confirm-title"
-          className="w-full max-w-md transform overflow-hidden rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl transition-all border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150"
+          className="internops-modal-panel w-full max-w-md transform overflow-hidden rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl transition-all border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150"
         >
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-900/40 text-lg">

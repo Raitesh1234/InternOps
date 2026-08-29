@@ -14,6 +14,7 @@
     "doctor:score": "npx -y react-doctor@0.9.2 . --score"
   },
   "dependencies": {
+    "@sentry/react": "^10.66.0",
     "@tanstack/react-query": "^5.51.0",
     "axios": "^1.7.2",
     "jwt-decode": "^4.0.0",
@@ -24,6 +25,8 @@
     "react-router-dom": "^6.24.0",
     "recharts": "^3.10.1",
     "socket.io-client": "^4.8.3",
+    "sonner": "^2.0.7",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3",
     "zustand": "^4.5.4"
   },
@@ -38,5 +41,8 @@
     "tailwindcss": "^3.4.19",
     "vite": "^6.4.3",
     "vitest": "^4.1.10"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.62.2"
   }
 }

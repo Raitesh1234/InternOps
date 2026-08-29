@@ -1,11 +1,16 @@
 const pool = require('../../config/db');
+const { assertActivityAllowed } = require('../team/lifecycle');
 
 async function addRating(rated, by, score, remarks) {
+  await assertActivityAllowed(
+    pool,
+    rated,
+    new Date().toISOString().slice(0, 10)
+  );
   const res = await pool.query(
     'INSERT INTO ratings (rated_user_id, rated_by, score, remarks) VALUES ($1,$2,$3,$4) RETURNING *',
     [rated, by, score, remarks]
   );
-
   return res.rows[0];
 }
 
@@ -14,8 +19,123 @@ async function getRatings(userId) {
     'SELECT * FROM ratings WHERE rated_user_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC',
     [userId]
   );
-
   return res.rows;
+}
+
+async function getDepartmentRatingsSheet({
+  departmentId,
+  requesterId,
+  isAdmin,
+  requesterRole,
+  from,
+  to,
+}) {
+  const departmentWide = isAdmin || requesterRole === 'SENIOR_TL';
+  const memberScope = departmentWide
+    ? `SELECT id, full_name, email, role, department_id, intern_code,
+              internship_status, suspended
+       FROM users
+       WHERE department_id = $1 AND deleted_at IS NULL`
+    : `WITH RECURSIVE visible_users AS (
+         SELECT id, full_name, email, role, department_id, manager_id,
+                intern_code, internship_status, suspended, 0 AS depth
+         FROM users
+         WHERE id = $2 AND deleted_at IS NULL
+         UNION ALL
+         SELECT u.id, u.full_name, u.email, u.role, u.department_id, u.manager_id,
+                u.intern_code, u.internship_status, u.suspended,
+                visible_users.depth + 1
+         FROM users u
+         INNER JOIN visible_users ON u.manager_id = visible_users.id
+         WHERE u.deleted_at IS NULL AND visible_users.depth < 100
+       )
+       SELECT id, full_name, email, role, department_id, intern_code,
+              internship_status, suspended
+       FROM visible_users
+       WHERE department_id = $1`;
+
+  const memberParams = departmentWide
+    ? [departmentId]
+    : [departmentId, requesterId];
+  const membersResult = await pool.query(memberScope, memberParams);
+  const members = membersResult.rows;
+  const memberIds = members.map((member) => member.id);
+
+  if (memberIds.length === 0) {
+    return { members: [], available_months: [] };
+  }
+
+  const availableMonthsResult = await pool.query(
+    `SELECT DISTINCT TO_CHAR(
+              DATE_TRUNC(
+                'month',
+                COALESCE(r.rating_period_end, r.created_at::date)
+              ),
+              'YYYY-MM'
+            ) AS month
+     FROM ratings r
+     WHERE r.rated_user_id = ANY($1::uuid[])
+       AND r.deleted_at IS NULL
+     ORDER BY month DESC`,
+    [memberIds]
+  );
+
+  const ratingsResult = await pool.query(
+    `SELECT r.rated_user_id,
+            r.score,
+            r.remarks,
+            r.created_at,
+            TO_CHAR(r.rating_period_start, 'YYYY-MM-DD') AS rating_period_start,
+            TO_CHAR(r.rating_period_end, 'YYYY-MM-DD') AS rating_period_end,
+            ROW_NUMBER() OVER (
+              PARTITION BY r.rated_user_id
+              ORDER BY COALESCE(r.rating_period_end, r.created_at::date) DESC,
+                       r.created_at DESC
+            ) AS recency
+     FROM ratings r
+     WHERE r.rated_user_id = ANY($1::uuid[])
+       AND COALESCE(r.rating_period_end, r.created_at::date) >= $2::date
+       AND COALESCE(r.rating_period_start, r.created_at::date) <
+           ($3::date + interval '1 day')
+       AND r.deleted_at IS NULL
+     ORDER BY COALESCE(r.rating_period_start, r.created_at::date) ASC,
+              r.created_at ASC`,
+    [memberIds, from, to]
+  );
+
+  const grouped = new Map();
+  for (const row of ratingsResult.rows) {
+    if (!grouped.has(row.rated_user_id)) grouped.set(row.rated_user_id, []);
+    grouped.get(row.rated_user_id).push(row);
+  }
+
+  return {
+    available_months: availableMonthsResult.rows.map((row) => row.month),
+    members: members.map((member) => {
+      const userRatings = grouped.get(member.id) || [];
+      const latest = userRatings.find((rating) => Number(rating.recency) === 1);
+      const average = userRatings.length
+        ? userRatings.reduce((sum, rating) => sum + Number(rating.score), 0) /
+          userRatings.length
+        : null;
+
+      return {
+        ...member,
+        average_score: average == null ? null : Number(average.toFixed(1)),
+        rating_count: userRatings.length,
+        latest_score: latest ? Number(latest.score) : null,
+        latest_remarks: latest?.remarks || null,
+        latest_created_at: latest?.created_at || null,
+        weekly_ratings: userRatings.map((rating) => ({
+          score: rating.score == null ? null : Number(rating.score),
+          remarks: rating.remarks || null,
+          created_at: rating.created_at,
+          period_start: rating.rating_period_start || null,
+          period_end: rating.rating_period_end || null,
+        })),
+      };
+    }),
+  };
 }
 
 async function getRatingHistory(userId) {
@@ -23,7 +143,6 @@ async function getRatingHistory(userId) {
     'SELECT * FROM ratings WHERE rated_user_id=$1 AND deleted_at IS NULL ORDER BY created_at ASC',
     [userId]
   );
-
   return res.rows;
 }
 
@@ -44,6 +163,7 @@ async function getRatingsByDepartment(deptId) {
 module.exports = {
   addRating,
   getRatings,
+  getDepartmentRatingsSheet,
   getRatingHistory,
   getRatingsByDepartment,
 };

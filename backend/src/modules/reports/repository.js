@@ -80,8 +80,54 @@ async function customSummary(from, to) {
   return rows;
 }
 
+async function detailedAttendanceExport(departmentId, from, to) {
+  const params = [from, to];
+  let department = '';
+  if (departmentId) {
+    params.push(departmentId);
+    department = ' AND u.department_id = $3';
+  }
+  const { rows } = await pool.query(
+    `WITH selected_users AS (
+      SELECT u.*,
+             COALESCE(u.extended_completion_date,u.completion_date) AS effective_completion_date
+      FROM users u
+      WHERE u.deleted_at IS NULL${department}
+    ), lifecycle_markers AS (
+      SELECT id,joining_date AS date,'JOINED' AS status FROM selected_users
+      WHERE joining_date BETWEEN $1 AND $2
+      UNION ALL
+      SELECT id,effective_completion_date AS date,'COMPLETED' AS status FROM selected_users
+      WHERE internship_status='COMPLETED' AND effective_completion_date BETWEEN $1 AND $2
+      UNION ALL
+      SELECT id,lifecycle_effective_date AS date,internship_status AS status FROM selected_users
+      WHERE internship_status IN ('TERMINATED','DISCONTINUED')
+        AND lifecycle_effective_date BETWEEN $1 AND $2
+    ), timeline AS (
+      SELECT u.full_name,u.email,u.role,COALESCE(u.internship_status,'ACTIVE') AS internship_status,
+             a.date::text AS date,a.status::text AS status,a.remarks
+      FROM attendance a JOIN selected_users u ON u.id=a.user_id
+      WHERE a.deleted_at IS NULL AND a.date BETWEEN $1 AND $2
+        AND NOT EXISTS (
+          SELECT 1 FROM lifecycle_markers marker
+          WHERE marker.id=a.user_id AND marker.date=a.date
+        )
+      UNION ALL
+      SELECT u.full_name,u.email,u.role,COALESCE(u.internship_status,'ACTIVE') AS internship_status,
+             marker.date::text AS date,marker.status::text AS status,NULL::text AS remarks
+      FROM lifecycle_markers marker JOIN selected_users u ON u.id=marker.id
+    )
+    SELECT * FROM timeline
+    ORDER BY CASE role WHEN 'ADMIN' THEN 0 WHEN 'SENIOR_TL' THEN 1 WHEN 'TL' THEN 2 WHEN 'CAPTAIN' THEN 3 WHEN 'INTERN' THEN 4 ELSE 5 END,
+    LOWER(COALESCE(NULLIF(TRIM(full_name),''),email)),date`,
+    params
+  );
+  return rows;
+}
+
 module.exports = {
   attendanceSummaryByRole,
+  detailedAttendanceExport,
   ratingsSummary,
   taskCompletionStats,
   departmentAttendance,

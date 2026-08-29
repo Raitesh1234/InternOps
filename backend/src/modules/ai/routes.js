@@ -9,6 +9,7 @@ const aiRepo = require('./repository');
 const config = require('../../config');
 const {
   generateAIResponse,
+  generateAIImage,
   getProviderHealth,
 } = require('../../services/aiProviderService');
 
@@ -134,21 +135,22 @@ async function routes(fastify) {
         });
       }
 
-      const usage = await aiRepo.getTodayUsage(req.user.id);
-
-      if (usage >= config.ai.dailyLimit) {
-        return reply.status(429).send({
-          error: 'Daily AI usage limit exceeded',
-        });
-      }
-
       try {
+        const usageResult = await aiRepo.tryIncrementUsage(
+          req.user.id,
+          config.ai.dailyLimit
+        );
+
+        if (!usageResult) {
+          return reply.status(429).send({
+            error: 'Daily AI usage limit exceeded',
+          });
+        }
+
         const result = await generateAIResponse({
           userId: req.user.id,
           messages: finalMessages,
         });
-
-        await aiRepo.incrementUsage(req.user.id);
 
         return {
           provider: result.provider,
@@ -162,12 +164,113 @@ async function routes(fastify) {
           });
         }
 
+        // `error.details` (when present) is the per-provider failure list
+        // produced by generateAIResponse — e.g. [{ provider: 'gemini',
+        // reason: 'missing_api_key' }, ...]. It's the actually useful
+        // diagnostic signal (which providers were tried and why each one
+        // failed) so it must be logged alongside the top-level error
+        // message, not dropped. None of this is sent to the client.
         req.log.error(
-          { err: error.message, code: error.statusCode },
+          {
+            err: error.message,
+            code: error.statusCode,
+            providers: error.details,
+          },
           'AI provider failed'
         );
         return reply.status(503).send({
           error: 'AI service unavailable',
+        });
+      }
+    }
+  );
+
+  const imageBodySchema = z.object({
+    prompt: z.string().min(1).max(2000),
+  });
+
+  fastify.post(
+    '/generate-image',
+    {
+      schema: {
+        tags: ['AI'],
+        description: 'Generate an image from an assignment topic description',
+        body: toSchema(imageBodySchema),
+      },
+      preHandler: [auth, rbac('ADMIN', 'SENIOR_TL', 'TL'), sanitize],
+      config: {
+        rateLimit: {
+          max: AI_CHAT_RATE_LIMIT,
+          timeWindow: '1 minute',
+          keyGenerator: (req) => req.user?.id || req.ip,
+        },
+      },
+    },
+    async (req, reply) => {
+      const { prompt } = req.body || {};
+
+      if (!prompt || !prompt.trim()) {
+        return reply.status(400).send({
+          error: 'Prompt is required',
+        });
+      }
+
+      try {
+        const usageResult = await aiRepo.tryIncrementUsage(
+          req.user.id,
+          config.ai.dailyLimit
+        );
+
+        if (!usageResult) {
+          return reply.status(429).send({
+            error: 'Daily AI usage limit exceeded',
+          });
+        }
+
+        const result = await generateAIImage({ prompt: prompt.trim() });
+
+        const fs = require('fs');
+        const path = require('path');
+        const crypto = require('crypto');
+        const config = require('../../config');
+
+        const buffer = Buffer.from(result.image_base64, 'base64');
+        const fileName = `task_${req.user.id}_${crypto.randomBytes(6).toString('hex')}.png`;
+        const uploadPath = path.join(
+          __dirname,
+          '..',
+          '..',
+          '..',
+          config.uploadDir
+        );
+        fs.mkdirSync(uploadPath, { recursive: true });
+        fs.writeFileSync(path.join(uploadPath, fileName), buffer);
+
+        const imageUrl = `/uploads/${fileName}`;
+
+        return {
+          provider: result.provider,
+          image_base64: result.image_base64,
+          image_path: imageUrl,
+        };
+      } catch (error) {
+        if (error.statusCode === 429) {
+          return reply.status(429).send({
+            error: 'AI provider rate limit exceeded',
+          });
+        }
+        if (error.statusCode === 413) {
+          return reply.status(413).send({
+            error: 'AI provider response too large',
+          });
+        }
+
+        req.log.error(
+          { err: error.message, code: error.statusCode },
+          'AI image generation failed'
+        );
+        return reply.status(503).send({
+          error: 'Image generation service unavailable',
         });
       }
     }

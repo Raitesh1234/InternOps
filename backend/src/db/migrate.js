@@ -40,6 +40,11 @@ const MIGRATION_RENAMES = {
     '023_social_tasks_reminder_sent_at.sql',
   '021_add_certificates_tables.sql': '024_add_certificates_tables.sql',
   '026_feature_flags.sql': '027_feature_flags.sql',
+  '034_workbook_import_execution.sql': '040_workbook_import_execution.sql',
+  '035_attendance_lifecycle_dates.sql': '041_attendance_lifecycle_dates.sql',
+  '036_workbook_profile_enrichment.sql': '042_workbook_profile_enrichment.sql',
+  '037_weekly_rating_import.sql': '043_weekly_rating_import.sql',
+  '038_department_senior_tl_unique.sql': '044_department_senior_tl_unique.sql',
 };
 
 const fsPromises = fs.promises;
@@ -273,5 +278,9 @@ module.exports = { migrate };
 if (require.main === module) {
   migrate()
     .then(() => process.exit(0))
-    .catch(() => process.exit(1));
+    .catch((err) => {
+      console.error('Migration failed:');
+      console.error(err?.stack || err);
+      process.exit(1);
+    });
 }

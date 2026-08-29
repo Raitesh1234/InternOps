@@ -188,6 +188,15 @@ afterAll(async () => {
 // Tests
 // ---------------------------------------------------------------------------
 describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
+  beforeEach(async () => {
+    await pool.query(
+      `UPDATE users
+       SET suspended = FALSE, deleted_at = NULL, role = (CASE WHEN id = $3 THEN 'INTERN' ELSE 'ADMIN' END)::user_role
+       WHERE id = ANY($1::uuid[]) OR id = $2`,
+      [[seededAdminId, secondAdminId], internId, internId]
+    );
+  });
+
   // ── Test 1 ────────────────────────────────────────────────────────────────
   it('should return 400 when an admin tries to delete themselves', async () => {
     const res = await inject('DELETE', `/api/v1/users/${seededAdminId}`, {
@@ -199,37 +208,27 @@ describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
     );
   });
   // ── Test 2 ────────────────────────────────────────────────────────────────
-  it('should return 400 when trying to delete the last active admin', async () => {
-    // Soft-delete the seeded admin directly via SQL so no app-level guard fires,
-    // leaving the second admin as the only active admin. Then try to delete
-    // the second admin through the API — this must be blocked.
-    await pool.query('UPDATE users SET deleted_at = NOW() WHERE email = $1', [
-      SEEDED_ADMIN_EMAIL,
+  it('rejects a token after its admin account is deleted', async () => {
+    await pool.query('UPDATE users SET deleted_at = NOW() WHERE id = $1', [
+      seededAdminId,
     ]);
+
     const res = await inject('DELETE', `/api/v1/users/${secondAdminId}`, {
       payload: {},
     });
-    expect(res.statusCode).toBe(400);
-    expect(JSON.parse(res.body).error).toBe(
-      'Cannot delete the last active admin'
-    );
-    // Restore the seeded admin for subsequent tests
-    await pool.query('UPDATE users SET deleted_at = NULL WHERE email = $1', [
-      SEEDED_ADMIN_EMAIL,
-    ]);
+
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error).toBe('User unavailable');
   });
   // ── Test 3 ────────────────────────────────────────────────────────────────
-  it('should return 200 when deleting an admin while multiple active admins exist', async () => {
-    // Both admins are currently active — deleting the second one must succeed
+  it('should reject deleting any Admin account', async () => {
     const res = await inject('DELETE', `/api/v1/users/${secondAdminId}`, {
       payload: {},
     });
-    expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).message).toBe('Soft-deleted');
-    // Restore for the remaining tests
-    await pool.query('UPDATE users SET deleted_at = NULL WHERE email = $1', [
-      SECOND_ADMIN_EMAIL,
-    ]);
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error).toBe(
+      'Admin accounts cannot be deleted.'
+    );
   });
   // ── Test 4 ────────────────────────────────────────────────────────────────
   it('should return 200 when deleting an intern', async () => {
@@ -249,10 +248,6 @@ describe('DELETE /api/users/:id — last-active-admin delete guard', () => {
     await pool.query('UPDATE users SET deleted_at = NOW() WHERE email = $1', [
       SECOND_ADMIN_EMAIL,
     ]);
-    const activeAdmins = await pool.query(
-      "SELECT id, email, role, suspended, deleted_at FROM users WHERE role = 'ADMIN' AND suspended = FALSE AND deleted_at IS NULL"
-    );
-    console.log('ACTIVE ADMINS BEFORE DELETE:', activeAdmins.rows);
     // Direct SQL bypass must be rejected by the trigger
     await expect(
       pool.query('UPDATE users SET deleted_at = NOW() WHERE id = $1', [
